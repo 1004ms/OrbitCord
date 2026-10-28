@@ -62,7 +62,7 @@ foreach ($relativePath in $bindingFiles) {
     $content = Get-Content $path -Raw
     if ($content.Contains($placeholder)) {
         $content = $content.Replace($placeholder, $Repository)
-        Set-Content -Path $path -Value $content -NoNewline -Encoding utf8
+        [System.IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding($false)))
     }
 }
 

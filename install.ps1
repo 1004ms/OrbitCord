@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [switch]$UpdateOnly,
     [switch]$StableOnly,
@@ -11,7 +11,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $repo = $Repository
-if ([string]::IsNullOrWhiteSpace($repo) -or $repo -eq '1004ms/OrbitCord') {
+$unconfiguredRepository = '__ORBITCORD_' + 'REPOSITORY__'
+if ([string]::IsNullOrWhiteSpace($repo) -or $repo -eq $unconfiguredRepository) {
     throw 'Repository is not configured. Run BOOTSTRAP-GITHUB.ps1 before publishing OrbitCord.'
 }
 $apiBase = "https://api.github.com/repos/$repo"
