@@ -20,8 +20,6 @@ for (const required of [
   if (!exists(required)) throw new Error(`GUI installer contract: missing ${required}`);
 }
 
-
-
 for (const file of [
   'src/OrbitCord.Installer/InstallerEngine.cs',
   'src/OrbitCord.Installer/WindowsIntegration.cs',
@@ -40,15 +38,35 @@ requireText(csproj, 'orbitcord-logo.png', 'installer project');
 
 const xaml = read('src/OrbitCord.Installer/MainWindow.xaml');
 for (const token of [
+  'Source="Assets/orbitcord-logo.png"',
+  'HorizontalAlignment="Center"',
+  'Text="Discord, lighter."',
+  'x:Name="InstallButton"',
+  'Content="Install"',
+  'x:Name="UpdateButton"',
+  'Content="Update"',
+  'x:Name="UninstallButton"',
+  'Content="Uninstall"',
   'x:Name="InstallPathBox"',
   'x:Name="BrowseButton"',
   'x:Name="DesktopShortcutCheckBox"',
   'x:Name="LaunchAfterInstallCheckBox"',
   'IsChecked="False"',
   'x:Name="InstallProgress"',
-  'x:Name="PrimaryActionButton"',
-  'x:Name="UninstallButton"',
 ]) requireText(xaml, token, 'installer UI');
+
+for (const forbidden of ['Setup summary', 'SafetyText', 'PrimaryActionButton', 'MaintenanceBadge']) {
+  if (xaml.includes(forbidden)) throw new Error(`installer UI still contains legacy ${forbidden}`);
+}
+
+const windowCode = read('src/OrbitCord.Installer/MainWindow.xaml.cs');
+for (const token of [
+  'InstallButton_OnClick',
+  'UpdateButton_OnClick',
+  'UninstallButton_OnClick',
+  'IsCurrentVersionInstalled',
+  'DesktopShortcutExists',
+]) requireText(windowCode, token, 'installer window behavior');
 
 const engine = read('src/OrbitCord.Installer/InstallerEngine.cs');
 for (const token of [
