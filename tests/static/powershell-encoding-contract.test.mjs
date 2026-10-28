@@ -21,29 +21,26 @@ function assertNoBom(name) {
 
 for (const name of ['install.ps1', 'update.ps1']) {
   assertNoBom(name);
+
   const source = text(name);
   const match = source.match(/\[string\]\$Repository\s*=\s*'([^']+)'/);
-  if (!match) throw new Error(`${name} is missing the Repository default`);
+  if (!match) {
+    throw new Error(`${name} is missing the Repository default`);
+  }
+
   const defaultRepo = match[1];
   if (source.includes(`$repo -eq '${defaultRepo}'`)) {
     throw new Error(`${name} incorrectly treats its configured repository as unconfigured`);
   }
+
   if (!source.includes("$unconfiguredRepository = '__ORBITCORD_' + 'REPOSITORY__'")) {
-    throw new Error(`${name} must use a bootstrap-safe repository sentinel`);
+    throw new Error(`${name} must use a safe repository sentinel`);
   }
 }
 
 const update = text('update.ps1');
 if (!update.includes("TrimStart([char]0xFEFF)")) {
   throw new Error('update.ps1 must defensively strip a BOM from downloaded installer source');
-}
-
-const bootstrap = text('BOOTSTRAP-GITHUB.ps1');
-if (!bootstrap.includes('System.Text.UTF8Encoding($false)')) {
-  throw new Error('BOOTSTRAP-GITHUB.ps1 must write bound public files as UTF-8 without BOM');
-}
-if (bootstrap.includes('Set-Content -Path $path -Value $content -NoNewline -Encoding utf8')) {
-  throw new Error('BOOTSTRAP-GITHUB.ps1 must not use Windows PowerShell 5.1 BOM-producing -Encoding utf8');
 }
 
 console.log('powershell-encoding-contract: PASS');

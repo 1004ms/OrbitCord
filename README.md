@@ -25,7 +25,7 @@ The graphical installer lets you:
 - optionally create a Desktop shortcut;
 - install a Start Menu shortcut;
 - register OrbitCord in Windows **Installed apps** with an uninstaller;
-- repair or update an existing OrbitCord installation;
+- install, update or uninstall OrbitCord from the same compact interface;
 - choose whether OrbitCord should launch when setup finishes (off by default).
 
 The default install location is:
@@ -52,7 +52,7 @@ irm https://raw.githubusercontent.com/1004ms/OrbitCord/main/update.ps1 | iex
 
 ### Uninstall
 
-The GUI installer registers OrbitCord in **Settings → Apps → Installed apps**, where it can be uninstalled normally.
+The GUI installer registers OrbitCord in **Settings â†’ Apps â†’ Installed apps**, where it can be uninstalled normally.
 
 The PowerShell uninstall path also remains available:
 
@@ -97,7 +97,7 @@ Requirements:
 Run the full test suite and launch the development build:
 
 ```powershell
-.\RUN-DEV.bat
+.\scripts\Run-Dev.ps1
 ```
 
 Run tests only:
@@ -111,7 +111,7 @@ The test gate builds both `OrbitCord.App` and `OrbitCord.Installer` before runni
 Build a local Windows package:
 
 ```powershell
-.\BUILD-WINDOWS.bat
+.\scripts\Build-OrbitCord.ps1
 ```
 
 For a self-contained app package:
@@ -119,18 +119,6 @@ For a self-contained app package:
 ```powershell
 .\scripts\Build-OrbitCord.ps1 -SelfContained
 ```
-
-## Publishing the repository for the first time
-
-The source package is repository-owner agnostic. `BOOTSTRAP-GITHUB.ps1` detects the currently authenticated GitHub account by default, or you can pass `-Repository owner/name`.
-
-After installing and authenticating the GitHub CLI (`gh auth login`), run once:
-
-```powershell
-.\BOOTSTRAP-GITHUB.ps1
-```
-
-It binds the generic repository placeholders to the selected `owner/name`, initializes Git when necessary, creates the repository as **public**, pushes `main`, creates the current version tag and queues the first GitHub Release.
 
 ## Publishing an update
 
