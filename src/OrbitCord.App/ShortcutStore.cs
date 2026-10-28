@@ -56,7 +56,9 @@ public sealed class ShortcutStore
                 .Distinct()
                 .OrderBy(NativeKeyCode.SortKey)
                 .ToList();
+
             if (keys.Count == 0) continue;
+            if (!ShortcutBindingPolicy.IsSafe(keys)) continue;
             if (!ShortcutCatalog.All.Any(x => x.Action == source.Action)) continue;
 
             result.Add(new ShortcutBinding

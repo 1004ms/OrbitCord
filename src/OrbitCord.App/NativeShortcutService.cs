@@ -65,7 +65,7 @@ internal sealed class NativeShortcutService : IDisposable
         ThrowIfDisposed();
         ReleaseAllHolds();
         _bindings = bindings
-            .Where(x => x.Enabled && x.VirtualKeys.Count > 0)
+            .Where(x => x.Enabled && x.VirtualKeys.Count > 0 && ShortcutBindingPolicy.IsSafe(x.VirtualKeys))
             .Select(x => x.Clone())
             .ToList();
     }

@@ -23,5 +23,13 @@
   <ItemGroup>
     <Resource Include="..\OrbitCord.App\Assets\orbitcord-logo.png" Link="Assets\orbitcord-logo.png" />
     <Resource Include="..\OrbitCord.App\Assets\orbitcord.ico" Link="Assets\orbitcord.ico" />
+    <Resource Include="Assets\installer-welcome.png" />
+    <Resource Include="Assets\installer-progress.png" />
+    <Resource Include="Assets\installer-success.png" />
+    <Resource Include="Assets\installer-title-icon.png" />
+    <Resource Include="Assets\feature-customisation.png" />
+    <Resource Include="Assets\feature-shortcuts.png" />
+    <Resource Include="Assets\feature-lighter.png" />
+    <Resource Include="Assets\feature-performance.png" />
   </ItemGroup>
 </Project>

@@ -52,7 +52,7 @@ irm https://raw.githubusercontent.com/1004ms/OrbitCord/main/update.ps1 | iex
 
 ### Uninstall
 
-The GUI installer registers OrbitCord in **Settings â†’ Apps â†’ Installed apps**, where it can be uninstalled normally.
+The GUI installer registers OrbitCord in **Settings → Apps → Installed apps**, where it can be uninstalled normally.
 
 The PowerShell uninstall path also remains available:
 
@@ -94,13 +94,13 @@ Requirements:
 - Node.js 20+
 - Git
 
-Run the full test suite and launch the development build:
+Run the development build:
 
 ```powershell
 .\scripts\Run-Dev.ps1
 ```
 
-Run tests only:
+Run the full test suite:
 
 ```powershell
 .\scripts\Test-OrbitCord.ps1
@@ -127,13 +127,13 @@ Do not manually build ZIP files or setup executables and upload them to GitHub.
 Use:
 
 ```powershell
-.\PUBLISH-UPDATE.ps1 -Version 1.0.1
+.\PUBLISH-UPDATE.ps1 -Version 1.0.2
 ```
 
 Or a prerelease:
 
 ```powershell
-.\PUBLISH-UPDATE.ps1 -Version 1.0.1-beta.1
+.\PUBLISH-UPDATE.ps1 -Version 1.0.2-beta.1
 ```
 
 The command:

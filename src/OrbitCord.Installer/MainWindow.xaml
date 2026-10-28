@@ -2,187 +2,448 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="OrbitCord Setup"
-        Width="640" Height="610"
+        Width="900" Height="760"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         ResizeMode="NoResize"
-        Background="{StaticResource WindowBrush}"
-        Icon="Assets/orbitcord.ico">
-    <Border Background="{StaticResource WindowBrush}"
-            BorderBrush="{StaticResource BorderBrush}"
-            BorderThickness="1"
-            CornerRadius="12">
+        Background="#080C18"
+        Icon="Assets/orbitcord.ico"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display">
+    <Window.Resources>
+        <Style x:Key="PixelActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Height" Value="58" />
+            <Setter Property="Background" Value="#724DFF" />
+            <Setter Property="BorderBrush" Value="#A78BFF" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Padding" Value="18,10" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="Shadow"
+                                    Margin="4,5,0,0"
+                                    Background="#281B69"
+                                    BorderBrush="#281B69"
+                                    BorderThickness="2"
+                                    CornerRadius="3" />
+                            <Border x:Name="Face"
+                                    Margin="0,0,4,5"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="3"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Face" Property="Background" Value="#8465FF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Face" Property="Margin" Value="4,5,0,0" />
+                                <Setter TargetName="Shadow" Property="Visibility" Value="Hidden" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Face" Property="Opacity" Value="0.45" />
+                                <Setter TargetName="Shadow" Property="Opacity" Value="0.25" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PixelSecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="#E2E6FF" />
+            <Setter Property="Background" Value="#11182D" />
+            <Setter Property="BorderBrush" Value="#425084" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="Padding" Value="14,9" />
+        </Style>
+
+        <Style x:Key="PixelFeatureTextStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="Foreground" Value="#E1E5FF" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="TextAlignment" Value="Center" />
+        </Style>
+    </Window.Resources>
+
+    <Border Background="#080C18"
+            BorderBrush="#35457F"
+            BorderThickness="2"
+            CornerRadius="4">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="46" />
+                <RowDefinition Height="44" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0"
-                  Background="#121319"
+                  Background="#0D1225"
                   MouseLeftButtonDown="TitleBar_OnMouseLeftButtonDown">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="46" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="46" />
-                    <ColumnDefinition Width="46" />
+                    <ColumnDefinition Width="44" />
+                    <ColumnDefinition Width="44" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="OrbitCord Setup"
-                           Margin="16,0,0,0"
-                           VerticalAlignment="Center"
-                           FontWeight="SemiBold"
-                           FontSize="13" />
+                <Image Source="Assets/installer-title-icon.png"
+                       Width="30" Height="30"
+                       Margin="9,0,0,0"
+                       HorizontalAlignment="Left"
+                       VerticalAlignment="Center"
+                       Stretch="Uniform"
+                       RenderOptions.BitmapScalingMode="HighQuality" />
+                <Image Source="Assets/orbitcord-logo.png" Width="1" Height="1" Visibility="Collapsed" />
 
-                <Button Grid.Column="1"
+                <TextBlock Grid.Column="1"
+                           Text="OrbitCord Setup"
+                           VerticalAlignment="Center"
+                           FontFamily="Consolas"
+                           FontWeight="Bold"
+                           FontSize="15"
+                           Foreground="#F0F1FF" />
+
+                <Button Grid.Column="2"
                         Click="MinimizeButton_OnClick"
                         Padding="0"
                         BorderThickness="0"
                         Background="Transparent"
+                        Foreground="#D8DDFC"
+                        FontFamily="Consolas"
                         FontSize="18"
                         Content="—" />
 
-                <Button Grid.Column="2"
+                <Button Grid.Column="3"
                         Click="CloseButton_OnClick"
                         Padding="0"
                         BorderThickness="0"
                         Background="Transparent"
+                        Foreground="#D8DDFC"
+                        FontFamily="Consolas"
                         FontSize="16"
-                        Content="✕" />
+                        Content="X" />
             </Grid>
 
-            <Grid Grid.Row="1" Margin="46,28,46,32">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+            <Grid Grid.Row="1" Background="#080C18">
+                <!-- READY / INSTALL / UPDATE -->
+                <Grid x:Name="ReadyPanel">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="440" />
+                        <RowDefinition Height="94" />
+                        <RowDefinition Height="92" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
 
-                <StackPanel Grid.Row="0" HorizontalAlignment="Center">
-                    <Image Source="Assets/orbitcord-logo.png"
-                           Width="112"
-                           Height="112"
-                           HorizontalAlignment="Center"
-                           Stretch="Uniform" />
-                    <TextBlock Text="OrbitCord"
-                               Margin="0,12,0,0"
-                               HorizontalAlignment="Center"
-                               FontSize="31"
-                               FontWeight="SemiBold" />
-                    <TextBlock Text="Discord, lighter."
-                               Margin="0,5,0,0"
-                               HorizontalAlignment="Center"
-                               Foreground="{StaticResource MutedTextBrush}"
-                               FontSize="14" />
-                    <TextBlock x:Name="VersionText"
-                               Margin="0,7,0,0"
-                               HorizontalAlignment="Center"
-                               Foreground="{StaticResource MutedTextBrush}"
-                               FontSize="11.5" />
-                </StackPanel>
+                    <Border Grid.Row="0" ClipToBounds="True" Background="#081022">
+                        <Image Source="Assets/installer-welcome.png"
+                               Stretch="Fill"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                    </Border>
 
-                <Grid Grid.Row="1" Margin="0,26,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="10" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="10" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Discord, lighter." Visibility="Collapsed" />
 
-                    <Button x:Name="InstallButton"
-                            Grid.Column="0"
-                            Height="50"
-                            Content="Install"
-                            Style="{StaticResource PrimaryButtonStyle}"
-                            FontWeight="SemiBold"
-                            Click="InstallButton_OnClick" />
+                    <Grid Grid.Row="1" Margin="54,8,54,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
 
-                    <Button x:Name="UpdateButton"
-                            Grid.Column="2"
-                            Height="50"
-                            Content="Update"
-                            FontWeight="SemiBold"
-                            Click="UpdateButton_OnClick" />
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <Image Source="Assets/feature-customisation.png"
+                                   Width="38" Height="38"
+                                   HorizontalAlignment="Center"
+                                   Stretch="Uniform"
+                                   RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                            <TextBlock Text="Customisation" Style="{StaticResource PixelFeatureTextStyle}" Margin="0,5,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <Image Source="Assets/feature-shortcuts.png"
+                                   Width="38" Height="38"
+                                   HorizontalAlignment="Center"
+                                   Stretch="Uniform"
+                                   RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                            <TextBlock Text="Global shortcuts" Style="{StaticResource PixelFeatureTextStyle}" Margin="0,5,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <Image Source="Assets/feature-lighter.png"
+                                   Width="38" Height="38"
+                                   HorizontalAlignment="Center"
+                                   Stretch="Uniform"
+                                   RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                            <TextBlock Text="Lighter" Style="{StaticResource PixelFeatureTextStyle}" Margin="0,5,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="3" VerticalAlignment="Center">
+                            <Image Source="Assets/feature-performance.png"
+                                   Width="38" Height="38"
+                                   HorizontalAlignment="Center"
+                                   Stretch="Uniform"
+                                   RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                            <TextBlock Text="Better performance" Style="{StaticResource PixelFeatureTextStyle}" Margin="0,5,0,0" />
+                        </StackPanel>
+                    </Grid>
 
-                    <Button x:Name="UninstallButton"
-                            Grid.Column="4"
-                            Height="50"
-                            Content="Uninstall"
-                            FontWeight="SemiBold"
-                            Background="#2B1B1D"
-                            BorderBrush="#5E2A2D"
-                            Foreground="#FFB8BA"
-                            Click="UninstallButton_OnClick" />
+                    <!-- Symmetric side columns keep the main action mathematically centered in the window. -->
+                    <Grid x:Name="ActionHost" Grid.Row="2" Margin="54,7,54,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="62" />
+                            <ColumnDefinition Width="14" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="14" />
+                            <ColumnDefinition Width="62" />
+                        </Grid.ColumnDefinitions>
+
+                        <Button x:Name="InstallButton"
+                                Grid.Column="2"
+                                Content="Install"
+                                Style="{StaticResource PixelActionButtonStyle}"
+                                Click="InstallButton_OnClick" />
+
+                        <Button x:Name="UpdateButton"
+                                Grid.Column="2"
+                                Content="Update"
+                                Style="{StaticResource PixelActionButtonStyle}"
+                                Visibility="Collapsed"
+                                Click="UpdateButton_OnClick" />
+
+                        <Button x:Name="OptionsToggleButton"
+                                Grid.Column="4"
+                                Height="58"
+                                Style="{StaticResource PixelSecondaryButtonStyle}"
+                                Content="⚙"
+                                FontFamily="Segoe UI Symbol"
+                                FontSize="23"
+                                ToolTip="Setup options"
+                                Click="OptionsToggleButton_OnClick" />
+                    </Grid>
+
+                    <Grid Grid.Row="3" Margin="30,0,30,10">
+                        <TextBlock x:Name="VersionText"
+                                   HorizontalAlignment="Left"
+                                   VerticalAlignment="Bottom"
+                                   FontFamily="Consolas"
+                                   Foreground="#7E89B3"
+                                   FontSize="11" />
+                        <TextBlock x:Name="StatusText"
+                                   Visibility="Collapsed"
+                                   Text="Ready." />
+                    </Grid>
+
+                    <!-- Centered modal: options no longer float crooked above the action row. -->
+                    <Grid x:Name="InstallOptionsOverlay"
+                          Grid.RowSpan="4"
+                          Panel.ZIndex="30"
+                          Background="#B0080C18"
+                          Visibility="Collapsed">
+                        <Border x:Name="InstallOptionsPanel"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Width="650"
+                                Background="#10162B"
+                                BorderBrush="#6576C4"
+                                BorderThickness="2"
+                                CornerRadius="6"
+                                Padding="22">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,18">
+                                    <TextBlock Text="SETUP OPTIONS"
+                                               FontFamily="Consolas"
+                                               FontSize="16"
+                                               FontWeight="Bold"
+                                               Foreground="#F2F3FF"
+                                               VerticalAlignment="Center" />
+                                    <Button HorizontalAlignment="Right"
+                                            Width="34" Height="30"
+                                            Padding="0"
+                                            Style="{StaticResource PixelSecondaryButtonStyle}"
+                                            Content="X"
+                                            FontFamily="Consolas"
+                                            ToolTip="Close options"
+                                            Click="OptionsToggleButton_OnClick" />
+                                </Grid>
+
+                                <StackPanel x:Name="InstallLocationSection">
+                                    <TextBlock Text="INSTALL LOCATION"
+                                               FontFamily="Consolas"
+                                               Foreground="#9CA6D1"
+                                               FontSize="10"
+                                               FontWeight="Bold"
+                                               Margin="2,0,0,8" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="10" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="InstallPathBox"
+                                                 Grid.Column="0"
+                                                 FontFamily="Consolas"
+                                                 VerticalContentAlignment="Center" />
+                                        <Button x:Name="BrowseButton"
+                                                Grid.Column="2"
+                                                Content="Browse"
+                                                Style="{StaticResource PixelSecondaryButtonStyle}"
+                                                Click="BrowseButton_OnClick" />
+                                    </Grid>
+                                </StackPanel>
+
+                                <Grid x:Name="InstallPreferencesSection" Margin="2,16,2,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox x:Name="DesktopShortcutCheckBox"
+                                              Grid.Column="0"
+                                              Content="Desktop shortcut"
+                                              IsChecked="False" />
+                                    <CheckBox x:Name="LaunchAfterInstallCheckBox"
+                                              Grid.Column="1"
+                                              Content="Launch when finished"
+                                              IsChecked="False" />
+                                </Grid>
+
+                                <Button x:Name="UninstallButton"
+                                        Margin="0,16,0,0"
+                                        Height="40"
+                                        Content="Uninstall"
+                                        Background="#32171F"
+                                        BorderBrush="#7A3042"
+                                        Foreground="#FFBBC7"
+                                        FontFamily="Consolas"
+                                        FontWeight="Bold"
+                                        Click="UninstallButton_OnClick" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
                 </Grid>
 
-                <Border x:Name="InstallOptionsPanel"
-                        Grid.Row="2"
-                        Margin="0,22,0,0"
-                        Background="{StaticResource SurfaceBrush}"
-                        BorderBrush="{StaticResource BorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="10"
-                        Padding="16">
-                    <StackPanel>
-                        <TextBlock Text="Install location"
-                                   Margin="2,0,0,8"
-                                   Foreground="{StaticResource MutedTextBrush}"
-                                   FontSize="11.5" />
+                <!-- INSTALLING / UPDATING -->
+                <Grid x:Name="ProgressPanel" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="292" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" ClipToBounds="True" Background="#081022">
+                        <Image Source="Assets/installer-progress.png"
+                               Stretch="Fill"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                    </Border>
+
+                    <StackPanel Grid.Row="1" Margin="70,30,70,28">
+                        <TextBlock x:Name="OperationTitleText"
+                                   Text="Installing OrbitCord..."
+                                   FontFamily="Consolas"
+                                   FontSize="25"
+                                   FontWeight="Bold"
+                                   Foreground="White" />
+                        <TextBlock x:Name="OperationSubtitleText"
+                                   Text="Setting up the best Discord experience for you."
+                                   Margin="0,7,0,22"
+                                   FontFamily="Consolas"
+                                   FontSize="13"
+                                   Foreground="#BFC7EA" />
+
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="10" />
-                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="70" />
                             </Grid.ColumnDefinitions>
-                            <TextBox x:Name="InstallPathBox"
-                                     Grid.Column="0"
-                                     VerticalContentAlignment="Center" />
-                            <Button x:Name="BrowseButton"
-                                    Grid.Column="2"
-                                    Content="Browse"
-                                    Click="BrowseButton_OnClick" />
+                            <ProgressBar x:Name="InstallProgress"
+                                         Grid.Column="0"
+                                         Height="24"
+                                         Minimum="0"
+                                         Maximum="100"
+                                         Value="0"
+                                         Background="#10162B"
+                                         Foreground="#805BFF"
+                                         BorderBrush="#52629B"
+                                         BorderThickness="2" />
+                            <TextBlock x:Name="ProgressPercentText"
+                                       Grid.Column="1"
+                                       Margin="14,0,0,0"
+                                       VerticalAlignment="Center"
+                                       FontFamily="Consolas"
+                                       FontSize="16"
+                                       FontWeight="Bold"
+                                       Foreground="White"
+                                       Text="0%" />
                         </Grid>
 
-                        <Grid Margin="2,12,2,0">
+                        <TextBlock x:Name="ProgressStatusText"
+                                   Margin="0,14,0,18"
+                                   FontFamily="Consolas"
+                                   Foreground="#D6DBF7"
+                                   FontSize="13"
+                                   Text="Preparing..." />
+
+                        <StackPanel Margin="2,0,0,0">
+                            <TextBlock Text="✓  Copying files..." FontFamily="Consolas" Foreground="#BBC5EC" FontSize="12" Margin="0,4" />
+                            <TextBlock Text="✓  Configuring Discord integration..." FontFamily="Consolas" Foreground="#BBC5EC" FontSize="12" Margin="0,4" />
+                            <TextBlock Text="✓  Setting up shortcuts..." FontFamily="Consolas" Foreground="#BBC5EC" FontSize="12" Margin="0,4" />
+                            <TextBlock Text="✓  Finalising..." FontFamily="Consolas" Foreground="#BBC5EC" FontSize="12" Margin="0,4" />
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+
+                <!-- COMPLETE -->
+                <Grid x:Name="SuccessPanel" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="330" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" ClipToBounds="True" Background="#081022">
+                        <Image Source="Assets/installer-success.png"
+                               Stretch="Fill"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                    </Border>
+                    <StackPanel Grid.Row="1" Margin="90,34,90,28" HorizontalAlignment="Stretch">
+                        <TextBlock Text="Download successful"
+                                   HorizontalAlignment="Center"
+                                   FontFamily="Consolas"
+                                   FontSize="28"
+                                   FontWeight="Bold"
+                                   Foreground="White" />
+                        <TextBlock x:Name="SuccessDetailText"
+                                   Margin="0,8,0,30"
+                                   HorizontalAlignment="Center"
+                                   FontFamily="Consolas"
+                                   FontSize="13"
+                                   Foreground="#BFC7EA"
+                                   Text="OrbitCord is ready to go." />
+                        <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="190" />
                             </Grid.ColumnDefinitions>
-                            <CheckBox x:Name="DesktopShortcutCheckBox"
-                                      Grid.Column="0"
-                                      Content="Desktop shortcut"
-                                      IsChecked="False" />
-                            <CheckBox x:Name="LaunchAfterInstallCheckBox"
-                                      Grid.Column="1"
-                                      Content="Launch when finished"
-                                      IsChecked="False" />
+                            <Button Grid.Column="0"
+                                    Height="58"
+                                    Style="{StaticResource PixelActionButtonStyle}"
+                                    Content="Launch OrbitCord"
+                                    Click="LaunchSuccessButton_OnClick" />
+                            <Button Grid.Column="2"
+                                    Height="58"
+                                    Style="{StaticResource PixelSecondaryButtonStyle}"
+                                    Content="Close"
+                                    Click="CloseSuccessButton_OnClick" />
                         </Grid>
                     </StackPanel>
-                </Border>
-
-                <TextBlock x:Name="StatusText"
-                           Grid.Row="3"
-                           Margin="0,18,0,0"
-                           HorizontalAlignment="Center"
-                           TextAlignment="Center"
-                           Foreground="{StaticResource MutedTextBrush}"
-                           FontSize="12"
-                           Text="Ready."
-                           TextWrapping="Wrap" />
-
-                <Grid Grid.Row="4" />
-
-                <ProgressBar x:Name="InstallProgress"
-                             Grid.Row="5"
-                             Height="7"
-                             Minimum="0"
-                             Maximum="100"
-                             Value="0"
-                             Background="#111218"
-                             Foreground="{StaticResource PrimaryBrush}" />
+                </Grid>
             </Grid>
         </Grid>
     </Border>

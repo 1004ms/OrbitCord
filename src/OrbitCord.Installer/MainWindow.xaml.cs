@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
@@ -12,6 +13,7 @@ public partial class MainWindow : Window
     private InstalledApplicationInfo? _installed;
     private CancellationTokenSource? _operationCts;
     private bool _busy;
+    private bool _optionsExpanded;
 
     public MainWindow(bool uninstallOnly)
     {
@@ -46,7 +48,8 @@ public partial class MainWindow : Window
 
     private void ConfigureNormalMode()
     {
-        InstallOptionsPanel.Visibility = Visibility.Visible;
+        InstallLocationSection.Visibility = Visibility.Visible;
+        InstallPreferencesSection.Visibility = Visibility.Visible;
 
         if (_installed is null)
         {
@@ -66,15 +69,27 @@ public partial class MainWindow : Window
                 : $"Update {_installed.Version} → {InstallerBuildInfo.Version} available.";
         }
 
+        ShowReadyState();
         ApplyActionState();
     }
 
     private void ConfigureUninstallMode()
     {
-        InstallOptionsPanel.Visibility = Visibility.Collapsed;
+        _optionsExpanded = true;
+        ReadyPanel.Visibility = Visibility.Visible;
+        ProgressPanel.Visibility = Visibility.Collapsed;
+        SuccessPanel.Visibility = Visibility.Collapsed;
+        InstallOptionsOverlay.Visibility = Visibility.Visible;
+        InstallLocationSection.Visibility = Visibility.Collapsed;
+        InstallPreferencesSection.Visibility = Visibility.Collapsed;
+        InstallButton.Visibility = Visibility.Collapsed;
+        UpdateButton.Visibility = Visibility.Collapsed;
+        OptionsToggleButton.Visibility = Visibility.Collapsed;
+
         StatusText.Text = _installed is null
             ? "OrbitCord is not installed."
             : $"Ready to uninstall OrbitCord {_installed.Version}.";
+
         ApplyActionState();
     }
 
@@ -86,6 +101,51 @@ public partial class MainWindow : Window
     {
         var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
         return File.Exists(Path.Combine(desktop, "OrbitCord.lnk"));
+    }
+
+    private void ShowReadyState()
+    {
+        if (_uninstallOnly) return;
+
+        ReadyPanel.Visibility = Visibility.Visible;
+        ProgressPanel.Visibility = Visibility.Collapsed;
+        SuccessPanel.Visibility = Visibility.Collapsed;
+        OptionsToggleButton.Visibility = Visibility.Visible;
+
+        var installed = _installed is not null;
+        InstallButton.Visibility = installed ? Visibility.Collapsed : Visibility.Visible;
+        UpdateButton.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
+        UpdateButton.Content = IsCurrentVersionInstalled() ? "Up to date" : "Update";
+
+        InstallOptionsOverlay.Visibility = _optionsExpanded ? Visibility.Visible : Visibility.Collapsed;
+        UninstallButton.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ShowProgressState()
+    {
+        ReadyPanel.Visibility = Visibility.Collapsed;
+        SuccessPanel.Visibility = Visibility.Collapsed;
+        ProgressPanel.Visibility = Visibility.Visible;
+        InstallProgress.IsIndeterminate = false;
+        InstallProgress.Value = 0;
+        ProgressPercentText.Text = "0%";
+        ProgressStatusText.Text = "Preparing...";
+
+        var updating = _installed is not null;
+        OperationTitleText.Text = updating ? "Updating OrbitCord..." : "Installing OrbitCord...";
+        OperationSubtitleText.Text = updating
+            ? $"Downloading and applying v{InstallerBuildInfo.Version}."
+            : "Setting up the best Discord experience for you.";
+    }
+
+    private void ShowSuccessState()
+    {
+        ReadyPanel.Visibility = Visibility.Collapsed;
+        ProgressPanel.Visibility = Visibility.Collapsed;
+        SuccessPanel.Visibility = Visibility.Visible;
+        SuccessDetailText.Text = _installed is null
+            ? "OrbitCord is ready to go."
+            : $"OrbitCord {_installed.Version} is ready to go.";
     }
 
     private void BrowseButton_OnClick(object sender, RoutedEventArgs e)
@@ -112,6 +172,13 @@ public partial class MainWindow : Window
         InstallPathBox.Text = selected;
     }
 
+    private void OptionsToggleButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_busy || _uninstallOnly) return;
+        _optionsExpanded = !_optionsExpanded;
+        InstallOptionsOverlay.Visibility = _optionsExpanded ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private async void InstallButton_OnClick(object sender, RoutedEventArgs e)
     {
         if (_busy || _installed is not null || _uninstallOnly) return;
@@ -132,6 +199,8 @@ public partial class MainWindow : Window
 
     private async Task RunInstallAsync()
     {
+        var completed = false;
+        ShowProgressState();
         SetBusy(true);
         _operationCts = new CancellationTokenSource();
 
@@ -148,9 +217,13 @@ public partial class MainWindow : Window
             RefreshInstalledState();
             InstallProgress.IsIndeterminate = false;
             InstallProgress.Value = 100;
+            ProgressPercentText.Text = "100%";
             StatusText.Text = _installed is null
                 ? "Done."
                 : $"OrbitCord {_installed.Version} is ready.";
+
+            completed = true;
+            ShowSuccessState();
         }
         catch (OperationCanceledException)
         {
@@ -167,16 +240,8 @@ public partial class MainWindow : Window
             _operationCts = null;
             SetBusy(false);
 
-            if (IsVisible && !_uninstallOnly)
-            {
-                var finalStatus = StatusText.Text;
+            if (IsVisible && !_uninstallOnly && !completed)
                 ConfigureNormalMode();
-                if (!string.IsNullOrWhiteSpace(finalStatus) &&
-                    !string.Equals(finalStatus, "Cancelled.", StringComparison.Ordinal))
-                {
-                    StatusText.Text = finalStatus;
-                }
-            }
         }
     }
 
@@ -191,6 +256,7 @@ public partial class MainWindow : Window
 
         if (confirmation != MessageBoxResult.Yes) return;
 
+        ShowProgressState();
         SetBusy(true);
         _operationCts = new CancellationTokenSource();
 
@@ -200,6 +266,7 @@ public partial class MainWindow : Window
             await _engine.UninstallAsync(progress, _operationCts.Token);
             InstallProgress.IsIndeterminate = false;
             InstallProgress.Value = 100;
+            ProgressPercentText.Text = "100%";
             StatusText.Text = "OrbitCord uninstalled.";
             MessageBox.Show(this, StatusText.Text, "OrbitCord Setup", MessageBoxButton.OK, MessageBoxImage.Information);
             Close();
@@ -217,22 +284,31 @@ public partial class MainWindow : Window
         {
             _operationCts?.Dispose();
             _operationCts = null;
-            if (IsVisible) SetBusy(false);
+            if (IsVisible)
+            {
+                SetBusy(false);
+                if (_uninstallOnly) ConfigureUninstallMode();
+                else ConfigureNormalMode();
+            }
         }
     }
 
     private void UpdateProgress(InstallerProgress update)
     {
         StatusText.Text = update.Message;
+        ProgressStatusText.Text = update.Message;
 
         if (update.Percent is { } percent)
         {
+            var clamped = Math.Clamp(percent, 0, 100);
             InstallProgress.IsIndeterminate = false;
-            InstallProgress.Value = Math.Clamp(percent, 0, 100);
+            InstallProgress.Value = clamped;
+            ProgressPercentText.Text = $"{clamped:0}%";
         }
         else
         {
             InstallProgress.IsIndeterminate = true;
+            ProgressPercentText.Text = "...";
         }
     }
 
@@ -255,8 +331,35 @@ public partial class MainWindow : Window
         InstallPathBox.IsEnabled = !_busy && !_uninstallOnly && !installed;
         DesktopShortcutCheckBox.IsEnabled = !_busy && !_uninstallOnly;
         LaunchAfterInstallCheckBox.IsEnabled = !_busy && !_uninstallOnly;
-        InstallOptionsPanel.IsEnabled = !_busy && !_uninstallOnly;
+        InstallOptionsPanel.IsEnabled = !_busy;
+        OptionsToggleButton.IsEnabled = !_busy && !_uninstallOnly;
     }
+
+    private void LaunchSuccessButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_installed is null) return;
+
+        try
+        {
+            var executable = Path.Combine(_installed.InstallLocation, "OrbitCord.exe");
+            if (File.Exists(executable))
+            {
+                Process.Start(new ProcessStartInfo(executable)
+                {
+                    UseShellExecute = true,
+                    WorkingDirectory = _installed.InstallLocation
+                });
+                Close();
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = ex.Message;
+            MessageBox.Show(this, ex.Message, "OrbitCord Setup", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void CloseSuccessButton_OnClick(object sender, RoutedEventArgs e) => Close();
 
     private void TitleBar_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -280,6 +383,7 @@ public partial class MainWindow : Window
             if (result != MessageBoxResult.Yes) return;
 
             StatusText.Text = "Cancelling...";
+            ProgressStatusText.Text = "Cancelling...";
             _operationCts?.Cancel();
             return;
         }
