@@ -58,6 +58,13 @@ jobs:
         shell: pwsh
         run: ./scripts/Test-OrbitCord.ps1 -Configuration Release
 
+      - name: Restore Windows x64 runtime packs
+        shell: pwsh
+        run: |
+          dotnet restore src/OrbitCord.App/OrbitCord.App.csproj `
+            -r win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'win-x64 restore failed' }
+
       - name: Publish self-contained Windows x64
         shell: pwsh
         run: |

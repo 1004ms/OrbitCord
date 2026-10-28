@@ -22,6 +22,12 @@ for (const needle of ['dotnet test', 'node']) {
 for (const needle of ['workflow_dispatch', 'push:', 'tags:', 'dotnet publish', 'OrbitCord-win-x64.zip', 'Get-FileHash', "'release', 'create'"]) {
   if (!release.includes(needle)) throw new Error(`release workflow missing ${needle}`);
 }
+const ridRestore = 'dotnet restore src/OrbitCord.App/OrbitCord.App.csproj `';
+const publishStep = 'dotnet publish src/OrbitCord.App/OrbitCord.App.csproj `';
+if (!release.includes(ridRestore)) throw new Error('release workflow must restore the win-x64 runtime packs before self-contained publish');
+if (release.indexOf(ridRestore) > release.indexOf(publishStep)) throw new Error('win-x64 restore must run before publish');
+const restoreBlock = release.slice(release.indexOf(ridRestore), release.indexOf(publishStep));
+if (!restoreBlock.includes('-r win-x64')) throw new Error('release restore must target win-x64');
 for (const needle of ['pull_request:', './scripts/Test-OrbitCord.ps1']) {
   if (!ci.includes(needle)) throw new Error(`CI workflow missing ${needle}`);
 }
