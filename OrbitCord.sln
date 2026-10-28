@@ -6,6 +6,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrbitCord.Core", "src\Orbit
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrbitCord.App", "src\OrbitCord.App\OrbitCord.App.csproj", "{08757F13-4F06-45CF-95DB-C3F0BCA78AB2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrbitCord.Installer", "src\OrbitCord.Installer\OrbitCord.Installer.csproj", "{348C8F50-B167-4329-9A7B-BBC413E4788B}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrbitCord.Core.Tests", "tests\OrbitCord.Core.Tests\OrbitCord.Core.Tests.csproj", "{CC5D04A1-D068-44A1-AD8B-9B7674750B93}"
 EndProject
 Global
@@ -22,6 +24,10 @@ Global
         {08757F13-4F06-45CF-95DB-C3F0BCA78AB2}.Debug|Any CPU.Build.0 = Debug|Any CPU
         {08757F13-4F06-45CF-95DB-C3F0BCA78AB2}.Release|Any CPU.ActiveCfg = Release|Any CPU
         {08757F13-4F06-45CF-95DB-C3F0BCA78AB2}.Release|Any CPU.Build.0 = Release|Any CPU
+        {348C8F50-B167-4329-9A7B-BBC413E4788B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {348C8F50-B167-4329-9A7B-BBC413E4788B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {348C8F50-B167-4329-9A7B-BBC413E4788B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {348C8F50-B167-4329-9A7B-BBC413E4788B}.Release|Any CPU.Build.0 = Release|Any CPU
         {CC5D04A1-D068-44A1-AD8B-9B7674750B93}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
         {CC5D04A1-D068-44A1-AD8B-9B7674750B93}.Debug|Any CPU.Build.0 = Debug|Any CPU
         {CC5D04A1-D068-44A1-AD8B-9B7674750B93}.Release|Any CPU.ActiveCfg = Release|Any CPU

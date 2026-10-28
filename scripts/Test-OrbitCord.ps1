@@ -22,19 +22,23 @@ if (-not ($sdks -match '^10\.')) {
     throw '.NET 10 SDK is required.'
 }
 
-Write-Host '[1/4] Restore' -ForegroundColor Cyan
+Write-Host '[1/5] Restore' -ForegroundColor Cyan
 & dotnet restore OrbitCord.sln
 if ($LASTEXITCODE -ne 0) { throw 'dotnet restore failed' }
 
-Write-Host '[2/4] Build app' -ForegroundColor Cyan
+Write-Host '[2/5] Build app' -ForegroundColor Cyan
 & dotnet build src/OrbitCord.App/OrbitCord.App.csproj -c $Configuration --no-restore
 if ($LASTEXITCODE -ne 0) { throw 'OrbitCord.App build failed' }
 
-Write-Host '[3/4] .NET tests' -ForegroundColor Cyan
+Write-Host '[3/5] Build installer' -ForegroundColor Cyan
+& dotnet build src/OrbitCord.Installer/OrbitCord.Installer.csproj -c $Configuration --no-restore
+if ($LASTEXITCODE -ne 0) { throw 'OrbitCord.Installer build failed' }
+
+Write-Host '[4/5] .NET tests' -ForegroundColor Cyan
 & dotnet test OrbitCord.sln -c $Configuration --no-restore
 if ($LASTEXITCODE -ne 0) { throw 'dotnet test failed' }
 
-Write-Host '[4/4] Web/static tests' -ForegroundColor Cyan
+Write-Host '[5/5] Web/static tests' -ForegroundColor Cyan
 $tests = @(
     Get-ChildItem tests/js/*.test.mjs -File | Sort-Object Name
     Get-ChildItem tests/static/*.test.mjs -File | Sort-Object Name
