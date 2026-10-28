@@ -19,13 +19,32 @@ for (const forbidden of ['Text="✦"', 'Text="⌨"', 'Text="↓"', 'Text="⚡"']
   if (xaml.includes(forbidden)) throw new Error(`legacy glyph feature icon still present: ${forbidden}`);
 }
 
+function openingTag(name) {
+  const match = xaml.match(new RegExp(`<[^>]+x:Name="${name}"[^>]*>`, 's'));
+  if (!match) throw new Error(`missing x:Name=${name}`);
+  return match[0];
+}
+
 if (!xaml.includes('x:Name="InstallOptionsOverlay"')) throw new Error('centered options overlay missing');
-if (!xaml.includes('VerticalAlignment="Center"\n                                Width="650"')) throw new Error('options panel is not centered');
-if (!xaml.includes('<ColumnDefinition Width="62" />\n                            <ColumnDefinition Width="14" />\n                            <ColumnDefinition Width="*" />\n                            <ColumnDefinition Width="14" />\n                            <ColumnDefinition Width="62" />')) {
+
+const optionsPanel = openingTag('InstallOptionsPanel');
+for (const token of ['HorizontalAlignment="Center"', 'VerticalAlignment="Center"', 'Width="650"']) {
+  if (!optionsPanel.includes(token)) throw new Error(`options panel missing ${token}`);
+}
+
+const actionHostMatch = xaml.match(/<Grid[^>]*x:Name="ActionHost"[^>]*>[\s\S]*?<Grid\.ColumnDefinitions>([\s\S]*?)<\/Grid\.ColumnDefinitions>/);
+if (!actionHostMatch) throw new Error('main action host or column definitions missing');
+const actionColumns = actionHostMatch[1];
+if (!/<ColumnDefinition\s+Width="62"\s*\/?>\s*<ColumnDefinition\s+Width="14"\s*\/?>\s*<ColumnDefinition\s+Width="\*"\s*\/?>\s*<ColumnDefinition\s+Width="14"\s*\/?>\s*<ColumnDefinition\s+Width="62"\s*\/?>/.test(actionColumns)) {
   throw new Error('main action host no longer has symmetric side columns');
 }
-if (!xaml.includes('x:Name="InstallButton"\n                                Grid.Column="2"')) throw new Error('Install button is not centered in the symmetric action column');
-if (!xaml.includes('x:Name="StatusText"\n                                   Visibility="Collapsed"')) throw new Error('ready status text should not be visible');
+
+const installButton = openingTag('InstallButton');
+if (!installButton.includes('Grid.Column="2"')) throw new Error('Install button is not centered in the symmetric action column');
+
+const statusText = openingTag('StatusText');
+if (!statusText.includes('Visibility="Collapsed"')) throw new Error('ready status text should not be visible');
+
 if (!code.includes('InstallOptionsOverlay.Visibility = _optionsExpanded ? Visibility.Visible : Visibility.Collapsed;')) {
   throw new Error('options button does not toggle centered overlay');
 }
