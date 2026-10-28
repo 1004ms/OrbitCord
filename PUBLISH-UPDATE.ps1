@@ -10,6 +10,41 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
+function Invoke-NativeProbe {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        # Windows PowerShell 5.1 can promote expected native stderr to a
+        # terminating NativeCommandError while ErrorActionPreference is Stop.
+        $ErrorActionPreference = 'Continue'
+        & $FilePath @Arguments *> $null
+        return $LASTEXITCODE -eq 0
+    }
+    catch {
+        return $false
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+}
+
+function Write-Utf8NoBom {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Content
+    )
+
+    [System.IO.File]::WriteAllText(
+        $Path,
+        $Content,
+        (New-Object System.Text.UTF8Encoding($false))
+    )
+}
+
 foreach ($command in 'git','gh','dotnet','node') {
     if (-not (Get-Command $command -ErrorAction SilentlyContinue)) { throw "$command is required." }
 }
@@ -23,6 +58,12 @@ if ($branch -ne 'main') { throw "Releases must be published from main, current b
 $status = (& git status --porcelain)
 if ($status) { throw "Working tree is not clean. Commit or stash changes first.`n$status" }
 
+$tag = "v$Version"
+$tagExists = Invoke-NativeProbe -FilePath 'git' -Arguments @(
+    'show-ref','--tags','--verify','--quiet',"refs/tags/$tag"
+)
+if ($tagExists) { throw "Tag $tag already exists." }
+
 $propsPath = Join-Path $PSScriptRoot 'Directory.Build.props'
 $originalProps = Get-Content $propsPath -Raw
 try {
@@ -31,13 +72,9 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Tests failed. Release aborted.' }
 }
 catch {
-    Set-Content -Path $propsPath -Value $originalProps -NoNewline -Encoding utf8
+    Write-Utf8NoBom -Path $propsPath -Content $originalProps
     throw
 }
-
-$tag = "v$Version"
-& git rev-parse $tag *> $null
-if ($LASTEXITCODE -eq 0) { throw "Tag $tag already exists." }
 
 & git add Directory.Build.props
 $commitMessage = if ($Message) { $Message } else { "release: $tag" }
@@ -73,6 +110,7 @@ if (-not $runId) {
 
 & gh run watch $runId --exit-status
 if ($LASTEXITCODE -ne 0) { throw 'GitHub release workflow failed.' }
+
 $repo = (& gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>$null).Trim()
 if ($repo) {
     Write-Host "Release published: https://github.com/$repo/releases/tag/$tag" -ForegroundColor Green
