@@ -1,0 +1,11 @@
+import fs from 'node:fs';import path from 'node:path';import assert from 'node:assert/strict';
+const root=path.resolve(import.meta.dirname,'../..');
+const settings=fs.readFileSync(path.join(root,'src/OrbitCord.App/Scripts/orbitcord-settings.js'),'utf8');
+const main=fs.readFileSync(path.join(root,'src/OrbitCord.App/MainWindow.xaml.cs'),'utf8');
+assert.match(settings,/id='orbitcord-app-name-rename'/,'customisation must expose the native rename trigger');
+assert.match(settings,/type:'orbitcord-app-name-prompt'/,'rename must use the native WPF dialog bridge');
+assert.doesNotMatch(settings,/orbitcord-app-name-input/,'WebView direct rename field must not return');
+assert.doesNotMatch(settings,/type:'orbitcord-app-name-save'/,'WebView direct-save rename path must be removed');
+assert.match(main,/case "orbitcord-app-name-prompt"/,'MainWindow must handle the native rename prompt');
+assert.doesNotMatch(main,/case "orbitcord-app-name-save"/,'MainWindow must not keep a competing direct-save rename bridge');
+console.log('native-rename-contract: PASS');

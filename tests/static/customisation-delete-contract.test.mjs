@@ -1,0 +1,15 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+const root = path.resolve(import.meta.dirname, '../..');
+const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
+const settings = read('src/OrbitCord.App/Scripts/orbitcord-settings.js');
+const main = read('src/OrbitCord.App/MainWindow.xaml.cs');
+const store = read('src/OrbitCord.App/IconCustomizationStore.cs');
+assert.ok(settings.includes("orbitcord-icon-context-menu"), 'customisation must expose an icon context menu');
+assert.ok(settings.includes("orbitcord-icon-delete"), 'customisation must send delete requests');
+assert.ok(main.includes('case "orbitcord-icon-delete"'), 'native bridge must handle icon deletion');
+assert.ok(store.includes('public void DeleteIcon(string icon)'), 'icon store must persist deletions');
+assert.ok(store.includes('deletedIcons'), 'Appearance.json state must persist deleted preset ids');
+assert.ok(store.includes('Deve rimanere almeno 1 icona.'), 'native store must enforce at least one remaining icon');
+console.log('customisation-delete-contract: PASS');

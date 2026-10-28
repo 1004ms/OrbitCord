@@ -1,0 +1,10 @@
+﻿<Project>
+  <PropertyGroup>
+    <OrbitCordVersion>1.0.0</OrbitCordVersion>
+    <Version>$(OrbitCordVersion)</Version>
+    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <RepositoryUrl>https://github.com/1004ms/OrbitCord</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+</Project>

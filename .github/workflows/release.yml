@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing v* tag to publish'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Resolve tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.tag }}' } else { '${{ github.ref_name }}' }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw "Invalid release tag: $tag" }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$($tag.Substring(1))" >> $env:GITHUB_OUTPUT
+          "prerelease=$($tag.Contains('-').ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.version.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+
+      - name: Validate tag matches source version
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content Directory.Build.props
+          $sourceVersion = [string]$props.Project.PropertyGroup.OrbitCordVersion
+          if ($sourceVersion -ne '${{ steps.version.outputs.version }}') {
+            throw "Tag version ${{ steps.version.outputs.version }} does not match source version $sourceVersion"
+          }
+
+      - name: Test
+        shell: pwsh
+        run: ./scripts/Test-OrbitCord.ps1 -Configuration Release
+
+      - name: Publish self-contained Windows x64
+        shell: pwsh
+        run: |
+          dotnet publish src/OrbitCord.App/OrbitCord.App.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            --no-restore `
+            -o artifacts/release
+          if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
+
+      - name: Package and checksum
+        shell: pwsh
+        run: |
+          $zip = 'artifacts/OrbitCord-win-x64.zip'
+          Compress-Archive -Path 'artifacts/release/*' -DestinationPath $zip -Force
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path "$zip.sha256" -Value "$hash  OrbitCord-win-x64.zip" -Encoding ascii
+          "OrbitCord ${{ steps.version.outputs.version }}" | Set-Content artifacts/release-version.txt -Encoding ascii
+
+      - name: Create or refresh GitHub Release
+        shell: pwsh
+        run: |
+          $tag = '${{ steps.version.outputs.tag }}'
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag artifacts/OrbitCord-win-x64.zip artifacts/OrbitCord-win-x64.zip.sha256 --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'release asset upload failed' }
+          } else {
+            $args = @(
+              'release', 'create', $tag,
+              'artifacts/OrbitCord-win-x64.zip',
+              'artifacts/OrbitCord-win-x64.zip.sha256',
+              '--title', 'OrbitCord ${{ steps.version.outputs.version }}',
+              '--generate-notes',
+              '--verify-tag'
+            )
+            if ('${{ steps.version.outputs.prerelease }}' -eq 'true') { $args += '--prerelease' }
+            & gh @args
+            if ($LASTEXITCODE -ne 0) { throw 'release creation failed' }
+          }

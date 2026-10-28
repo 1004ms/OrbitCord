@@ -1,0 +1,9 @@
+<Application x:Class="OrbitCord.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <SolidColorBrush x:Key="OrbitCordPurple" Color="#8A00FF" />
+        <SolidColorBrush x:Key="OrbitCordText" Color="#F7F4FF" />
+        <SolidColorBrush x:Key="OrbitCordMuted" Color="#9F98B5" />
+    </Application.Resources>
+</Application>

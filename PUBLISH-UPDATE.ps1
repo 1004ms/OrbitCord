@@ -1,0 +1,81 @@
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)]
+    [ValidatePattern('^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$')]
+    [string]$Version,
+    [string]$Message,
+    [switch]$NoWait
+)
+
+$ErrorActionPreference = 'Stop'
+Set-Location $PSScriptRoot
+
+foreach ($command in 'git','gh','dotnet','node') {
+    if (-not (Get-Command $command -ErrorAction SilentlyContinue)) { throw "$command is required." }
+}
+
+& gh auth status *> $null
+if ($LASTEXITCODE -ne 0) { throw 'GitHub CLI is not authenticated. Run: gh auth login' }
+
+$branch = (& git branch --show-current).Trim()
+if ($branch -ne 'main') { throw "Releases must be published from main, current branch is '$branch'." }
+
+$status = (& git status --porcelain)
+if ($status) { throw "Working tree is not clean. Commit or stash changes first.`n$status" }
+
+$propsPath = Join-Path $PSScriptRoot 'Directory.Build.props'
+$originalProps = Get-Content $propsPath -Raw
+try {
+    & (Join-Path $PSScriptRoot 'scripts\Set-Version.ps1') -Version $Version
+    & (Join-Path $PSScriptRoot 'scripts\Test-OrbitCord.ps1') -Configuration Release
+    if ($LASTEXITCODE -ne 0) { throw 'Tests failed. Release aborted.' }
+}
+catch {
+    Set-Content -Path $propsPath -Value $originalProps -NoNewline -Encoding utf8
+    throw
+}
+
+$tag = "v$Version"
+& git rev-parse $tag *> $null
+if ($LASTEXITCODE -eq 0) { throw "Tag $tag already exists." }
+
+& git add Directory.Build.props
+$commitMessage = if ($Message) { $Message } else { "release: $tag" }
+& git commit -m $commitMessage
+if ($LASTEXITCODE -ne 0) { throw 'Release commit failed.' }
+
+& git tag -a $tag -m "OrbitCord $Version"
+if ($LASTEXITCODE -ne 0) { throw 'Tag creation failed.' }
+
+& git push origin main
+if ($LASTEXITCODE -ne 0) { throw 'Push to main failed.' }
+& git push origin $tag
+if ($LASTEXITCODE -ne 0) { throw 'Tag push failed.' }
+
+Write-Host "Release workflow queued for $tag." -ForegroundColor Green
+if ($NoWait) { exit 0 }
+
+$runId = $null
+for ($i = 0; $i -lt 30 -and -not $runId; $i++) {
+    Start-Sleep -Seconds 2
+    $json = & gh run list --workflow release.yml --limit 20 --json databaseId,headBranch,status 2>$null
+    if ($LASTEXITCODE -eq 0 -and $json) {
+        $runs = $json | ConvertFrom-Json
+        $run = $runs | Where-Object { $_.headBranch -eq $tag } | Select-Object -First 1
+        if ($run) { $runId = $run.databaseId }
+    }
+}
+
+if (-not $runId) {
+    Write-Warning 'Could not locate the GitHub Actions run yet. The tag was pushed successfully.'
+    exit 0
+}
+
+& gh run watch $runId --exit-status
+if ($LASTEXITCODE -ne 0) { throw 'GitHub release workflow failed.' }
+$repo = (& gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>$null).Trim()
+if ($repo) {
+    Write-Host "Release published: https://github.com/$repo/releases/tag/$tag" -ForegroundColor Green
+} else {
+    Write-Host "Release published: $tag" -ForegroundColor Green
+}

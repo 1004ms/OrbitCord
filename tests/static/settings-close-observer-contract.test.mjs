@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const source = fs.readFileSync(new URL('../../src/OrbitCord.App/Scripts/orbitcord-settings.js', import.meta.url), 'utf8');
+assert.match(source, /function observeSettingsLifecycle\(root\)/, 'active OrbitCord pages must follow the concrete Discord Settings shell lifecycle');
+assert.match(source, /new MutationObserver/, 'a scoped lifecycle observer is required so portal cleanup does not depend on close-button text');
+assert.match(source, /settingsLifecycleObserver\.observe\(parent, \{ childList: true \}\)/, 'the lifecycle observer must watch only the Settings root parent');
+assert.doesNotMatch(source, /settingsLifecycleObserver\.observe\(document\.(?:body|documentElement)/, 'the lifecycle observer must never observe the entire Discord document');
+assert.match(source, /disconnectSettingsLifecycle\(\)/, 'the scoped observer must be disconnected during teardown/remount');
+assert.match(source, /event\?\.key === 'Escape'/, 'Escape remains a synchronous teardown path');
+assert.match(source, /deactivateOrbitPage\(\)/, 'close handling must tear down the OrbitCord portal');
+console.log('settings-close-observer-contract: PASS');
