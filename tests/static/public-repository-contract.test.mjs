@@ -22,7 +22,7 @@ for (const rel of mustExist) {
 if (fs.existsSync(path.join(root, 'docs', 'superpowers'))) throw new Error('internal superpowers docs must not ship publicly');
 if (fs.existsSync(path.join(root, 'src', 'OrbitCord.App', 'NativeCaptureProbe.cs'))) throw new Error('debug-only NativeCaptureProbe must not ship publicly');
 const main = fs.readFileSync(path.join(root, 'src', 'OrbitCord.App', 'MainWindow.xaml.cs'), 'utf8');
-if (main.includes('NativeCaptureProbe') || main.includes('ToggleNativeCaptureProbeAsync')) throw new Error('MainWindow still references NativeCaptureProbe');
+if (main.includes('NativeCaptureProbe') || main.includes('ToggleNativeCaptureProbeAsync') || main.includes('_nativeCaptureProbe')) throw new Error('MainWindow still references NativeCaptureProbe');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
 const installUrl = readme.match(/raw\.githubusercontent\.com\/([^\s]+)\/main\/install\.ps1/);
 const updateUrl = readme.match(/raw\.githubusercontent\.com\/([^\s]+)\/main\/update\.ps1/);

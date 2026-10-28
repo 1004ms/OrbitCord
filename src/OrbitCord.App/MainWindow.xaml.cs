@@ -890,12 +890,6 @@ public partial class MainWindow : Window
 
         var memoryTarget = DiscordView.CoreWebView2?.MemoryUsageTargetLevel.ToString().ToUpperInvariant() ?? "UNKNOWN";
         var snapshot = PerformanceSnapshot.Format(DateTimeOffset.Now, _gamingMode, _ultraLiteMode, memoryTarget, DiscordView.Visibility == Visibility.Visible, unique);
-        snapshot += Environment.NewLine + $"Native capture: {(_nativeCaptureProbe.IsCapturing ? "ON" : "OFF")}";
-        if (_nativeCaptureProbe.IsCapturing)
-        {
-            snapshot += Environment.NewLine + $"Native capture target: {_nativeCaptureProbe.TargetDisplayName ?? "unknown"}";
-            snapshot += Environment.NewLine + $"Native capture frames: {_nativeCaptureProbe.FramesReceived:N0}";
-        }
         Clipboard.SetText(snapshot);
         var totalMb = unique.Sum(x => x.WorkingSetBytes) / 1024d / 1024d;
         await ShowToastAsync($"Snapshot copied • {totalMb:0} MB • {unique.Length} processes");
