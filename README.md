@@ -26,7 +26,7 @@ irm https://raw.githubusercontent.com/1004ms/OrbitCord/main/install.ps1 | iex
 The default program location is:
 
 ```text
-%LocalAppData%\Programs\OrbitCord
+%USERPROFILE%\Desktop\OrbitCord
 ```
 
 `install.ps1` resolves the current GitHub **latest release**, downloads `OrbitCord-win-x64.zip` plus its SHA-256 file, verifies the archive, then installs it. If an older GUI-Setup installation used a custom directory, OrbitCord can migrate/update that existing installation in place.
@@ -47,7 +47,7 @@ irm https://raw.githubusercontent.com/1004ms/OrbitCord/main/uninstall.ps1 | iex
 
 Uninstall is intentionally a **full purge**. It stops OrbitCord and removes managed OrbitCord state for the current Windows user, including:
 
-- `%LocalAppData%\Programs\OrbitCord` and any old registered custom install location;
+- `%USERPROFILE%\Desktop\OrbitCord`, the historical `%LocalAppData%\Programs\OrbitCord`, and any old registered custom install location;
 - legacy `OrbitCord.backup-*` directories;
 - `%LocalAppData%\OrbitCord` settings, icon cache, logs and WebView2 profile;
 - `%AppData%\OrbitCord` if present;

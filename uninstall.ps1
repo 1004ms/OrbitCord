@@ -5,7 +5,9 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $managedStateKey = 'HKCU:\Software\OrbitCord'
 $legacyUninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\OrbitCord'
-$defaultInstallDir = Join-Path $env:LOCALAPPDATA 'Programs\OrbitCord'
+$desktopDirectory = [Environment]::GetFolderPath('DesktopDirectory')
+$defaultInstallDir = Join-Path $desktopDirectory 'OrbitCord'
+$legacyDefaultInstallDir = Join-Path $env:LOCALAPPDATA 'Programs\OrbitCord'
 $localData = Join-Path $env:LOCALAPPDATA 'OrbitCord'
 $roamingData = Join-Path $env:APPDATA 'OrbitCord'
 $failures = New-Object System.Collections.Generic.List[string]
@@ -63,6 +65,7 @@ catch { }
 
 $installLocations = @(
     (Normalize-OrbitCordPath $defaultInstallDir),
+    (Normalize-OrbitCordPath $legacyDefaultInstallDir),
     $managedInstallDir,
     $legacyInstallDir
 ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique

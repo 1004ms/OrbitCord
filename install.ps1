@@ -20,7 +20,9 @@ $headers = @{
     'X-GitHub-Api-Version' = '2022-11-28'
 }
 $apiBase = "https://api.github.com/repos/$repo"
-$defaultInstallDir = Join-Path $env:LOCALAPPDATA 'Programs\OrbitCord'
+$desktopDirectory = [Environment]::GetFolderPath('DesktopDirectory')
+$defaultInstallDir = Join-Path $desktopDirectory 'OrbitCord'
+$legacyDefaultInstallDir = Join-Path $env:LOCALAPPDATA 'Programs\OrbitCord'
 $managedStateKey = 'HKCU:\Software\OrbitCord'
 $legacyUninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\OrbitCord'
 
@@ -122,12 +124,26 @@ function New-OrbitCordShortcut([string]$ShortcutPath, [string]$ExePath) {
 
 $managedInstallDir = Get-ManagedInstallLocation
 $legacyInstallDir = Get-LegacyInstallLocation
-$installDir = $defaultInstallDir
-foreach ($candidate in @($managedInstallDir, $legacyInstallDir, $defaultInstallDir)) {
+$existingInstallDir = $null
+foreach ($candidate in @($managedInstallDir, $legacyInstallDir, $defaultInstallDir, $legacyDefaultInstallDir)) {
     if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -LiteralPath (Join-Path $candidate 'OrbitCord.exe'))) {
-        $installDir = $candidate
+        $existingInstallDir = $candidate
         break
     }
+}
+
+# Normal installs always live on the Desktop. Update-only keeps the current managed location.
+$installDir = if ($UpdateOnly -and -not [string]::IsNullOrWhiteSpace($existingInstallDir)) { $existingInstallDir } else { $defaultInstallDir }
+$migrationSourceInstallDir = $null
+if (-not $UpdateOnly -and -not [string]::IsNullOrWhiteSpace($existingInstallDir)) {
+    try {
+        $existingFull = [IO.Path]::GetFullPath($existingInstallDir).TrimEnd('\')
+        $targetFull = [IO.Path]::GetFullPath($installDir).TrimEnd('\')
+        if (-not $existingFull.Equals($targetFull, [StringComparison]::OrdinalIgnoreCase)) {
+            $migrationSourceInstallDir = $existingInstallDir
+        }
+    }
+    catch { }
 }
 
 $versionFile = Join-Path $installDir '.orbitcord-version'
@@ -212,6 +228,12 @@ try {
     }
 
     Save-ManagedInstallState $installDir $displayVersion
+
+    if (-not [string]::IsNullOrWhiteSpace($migrationSourceInstallDir) -and (Test-Path -LiteralPath $migrationSourceInstallDir)) {
+        Write-Host "Removing previous OrbitCord install from $migrationSourceInstallDir..." -ForegroundColor DarkGray
+        Remove-Item -LiteralPath $migrationSourceInstallDir -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-StaleOrbitCordBackups $migrationSourceInstallDir
+    }
 
     # 1.1.7 removes the historical GUI Setup and its Apps/Features registration.
     Remove-LegacySetupState $installDir
