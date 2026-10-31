@@ -1,8 +1,6 @@
 [CmdletBinding()]
 param(
     [switch]$UpdateOnly,
-    [switch]$StableOnly,
-    [string]$Version,
     [switch]$DesktopShortcut,
     [switch]$NoLaunch,
     [string]$Repository = '1004ms/OrbitCord'
@@ -13,130 +11,236 @@ $ProgressPreference = 'SilentlyContinue'
 $repo = $Repository
 $unconfiguredRepository = '__ORBITCORD_' + 'REPOSITORY__'
 if ([string]::IsNullOrWhiteSpace($repo) -or $repo -eq $unconfiguredRepository) {
-    throw 'Repository is not configured. Run BOOTSTRAP-GITHUB.ps1 before publishing OrbitCord.'
+    throw 'Repository is not configured.'
 }
-$apiBase = "https://api.github.com/repos/$repo"
-$installDir = Join-Path $env:LOCALAPPDATA 'Programs\OrbitCord'
-$versionFile = Join-Path $installDir '.orbitcord-version'
+
 $headers = @{
-    'User-Agent' = 'OrbitCord-PowerShell-Installer'
+    'User-Agent' = 'OrbitCord-PowerShell'
     'Accept' = 'application/vnd.github+json'
     'X-GitHub-Api-Version' = '2022-11-28'
 }
+$apiBase = "https://api.github.com/repos/$repo"
+$defaultInstallDir = Join-Path $env:LOCALAPPDATA 'Programs\OrbitCord'
+$managedStateKey = 'HKCU:\Software\OrbitCord'
+$legacyUninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\OrbitCord'
 
-function Get-OrbitCordRelease {
-    if ($Version) {
-        $tag = if ($Version.StartsWith('v')) { $Version } else { "v$Version" }
-        return Invoke-RestMethod -Headers $headers -Uri "$apiBase/releases/tags/$tag"
-    }
 
-    $releases = @(Invoke-RestMethod -Headers $headers -Uri "$apiBase/releases?per_page=20")
-    $release = $releases |
-        Where-Object { -not $_.draft -and (-not $StableOnly -or -not $_.prerelease) } |
-        Select-Object -First 1
-    if (-not $release) {
-        if ($StableOnly) { throw 'No stable OrbitCord release is available yet.' }
-        throw 'No OrbitCord release is available yet.'
+function Get-ManagedInstallLocation {
+    try {
+        $entry = Get-ItemProperty -LiteralPath $managedStateKey -ErrorAction SilentlyContinue
+        if ($entry -and -not [string]::IsNullOrWhiteSpace([string]$entry.InstallLocation)) {
+            return [Environment]::ExpandEnvironmentVariables(([string]$entry.InstallLocation).Trim().Trim('"'))
+        }
     }
-    return $release
+    catch { }
+    return $null
+}
+
+function Save-ManagedInstallState([string]$InstallDirectory, [string]$Version) {
+    New-Item -Path $managedStateKey -Force | Out-Null
+    Set-ItemProperty -LiteralPath $managedStateKey -Name 'InstallLocation' -Value $InstallDirectory -Force
+    Set-ItemProperty -LiteralPath $managedStateKey -Name 'Version' -Value $Version -Force
+}
+
+function Get-LegacyInstallLocation {
+    try {
+        $entry = Get-ItemProperty -LiteralPath $legacyUninstallKey -ErrorAction SilentlyContinue
+        if ($entry -and -not [string]::IsNullOrWhiteSpace([string]$entry.InstallLocation)) {
+            return [Environment]::ExpandEnvironmentVariables(([string]$entry.InstallLocation).Trim().Trim('"'))
+        }
+    }
+    catch { }
+    return $null
+}
+
+function Remove-LegacySetupState([string]$InstallDirectory) {
+    try { Remove-Item -LiteralPath $legacyUninstallKey -Recurse -Force -ErrorAction SilentlyContinue } catch { }
+    if (-not [string]::IsNullOrWhiteSpace($InstallDirectory)) {
+        Remove-Item -LiteralPath (Join-Path $InstallDirectory 'OrbitCord-Setup.exe') -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Remove-StaleOrbitCordBackups([string]$InstallDirectory) {
+    if ([string]::IsNullOrWhiteSpace($InstallDirectory)) { return }
+    try {
+        $parent = Split-Path -Parent $InstallDirectory
+        $leaf = Split-Path -Leaf $InstallDirectory
+        if (Test-Path -LiteralPath $parent) {
+            Get-ChildItem -LiteralPath $parent -Directory -Filter "$leaf.backup-*" -ErrorAction SilentlyContinue |
+                Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    catch { }
+}
+
+function Get-LatestOrbitCordRelease {
+    return Invoke-RestMethod -Headers $headers -Uri "$apiBase/releases/latest"
+}
+
+function Get-ReleaseAsset($Release, [string]$Name) {
+    return $Release.assets | Where-Object { $_.name -eq $Name } | Select-Object -First 1
+}
+
+function Stop-OrbitCord {
+    $processes = @(Get-Process OrbitCord -ErrorAction SilentlyContinue)
+    foreach ($process in $processes) {
+        try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch { }
+    }
+    for ($i = 0; $i -lt 30; $i++) {
+        if (-not (Get-Process OrbitCord -ErrorAction SilentlyContinue)) { return }
+        Start-Sleep -Milliseconds 100
+    }
+    if (Get-Process OrbitCord -ErrorAction SilentlyContinue) {
+        throw 'OrbitCord is still running. Close it and run the command again.'
+    }
+}
+
+function Copy-DirectoryContents([string]$Source, [string]$Destination) {
+    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    Get-ChildItem -LiteralPath $Source -Force | Copy-Item -Destination $Destination -Recurse -Force
 }
 
 function New-OrbitCordShortcut([string]$ShortcutPath, [string]$ExePath) {
     $parent = Split-Path -Parent $ShortcutPath
     New-Item -ItemType Directory -Path $parent -Force | Out-Null
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($ShortcutPath)
-    $shortcut.TargetPath = $ExePath
-    $shortcut.WorkingDirectory = Split-Path -Parent $ExePath
-    $shortcut.IconLocation = "$ExePath,0"
-    $shortcut.Description = 'OrbitCord'
-    $shortcut.Save()
+    $shell = $null
+    $shortcut = $null
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($ShortcutPath)
+        $shortcut.TargetPath = $ExePath
+        $shortcut.WorkingDirectory = Split-Path -Parent $ExePath
+        $shortcut.IconLocation = "$ExePath,0"
+        $shortcut.Description = 'OrbitCord'
+        $shortcut.Save()
+    }
+    finally {
+        if ($shortcut) { try { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shortcut) } catch { } }
+        if ($shell) { try { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell) } catch { } }
+    }
 }
 
-$release = Get-OrbitCordRelease
+$managedInstallDir = Get-ManagedInstallLocation
+$legacyInstallDir = Get-LegacyInstallLocation
+$installDir = $defaultInstallDir
+foreach ($candidate in @($managedInstallDir, $legacyInstallDir, $defaultInstallDir)) {
+    if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -LiteralPath (Join-Path $candidate 'OrbitCord.exe'))) {
+        $installDir = $candidate
+        break
+    }
+}
+
+$versionFile = Join-Path $installDir '.orbitcord-version'
+$installedExe = Join-Path $installDir 'OrbitCord.exe'
+if ($UpdateOnly -and -not (Test-Path -LiteralPath $installedExe)) {
+    throw "OrbitCord is not installed. Expected: $installedExe"
+}
+
+Write-Host 'Checking the latest OrbitCord GitHub release...' -ForegroundColor Cyan
+$release = Get-LatestOrbitCordRelease
 $tag = [string]$release.tag_name
-$displayVersion = $tag.TrimStart('v')
+if ([string]::IsNullOrWhiteSpace($tag)) { throw 'GitHub latest release did not contain a tag name.' }
+$displayVersion = $tag.TrimStart('v', 'V')
 
-if ($UpdateOnly -and -not (Test-Path $installDir)) {
-    throw "OrbitCord is not installed at $installDir. Run install.ps1 first."
+$zipAsset = Get-ReleaseAsset $release 'OrbitCord-win-x64.zip'
+$hashAsset = Get-ReleaseAsset $release 'OrbitCord-win-x64.zip.sha256'
+if (-not $zipAsset -or -not $hashAsset) {
+    throw "Release $tag is missing OrbitCord-win-x64.zip or OrbitCord-win-x64.zip.sha256."
 }
 
-if (Test-Path $versionFile) {
-    $installedVersion = (Get-Content $versionFile -Raw).Trim()
+if ((Test-Path -LiteralPath $installedExe) -and (Test-Path -LiteralPath $versionFile)) {
+    $installedVersion = (Get-Content -LiteralPath $versionFile -Raw).Trim()
     if ($installedVersion -eq $displayVersion) {
-        Write-Host "OrbitCord $displayVersion is already installed." -ForegroundColor Green
+        Save-ManagedInstallState $installDir $displayVersion
+        Remove-LegacySetupState $installDir
+        Remove-StaleOrbitCordBackups $installDir
+        Write-Host "OrbitCord $displayVersion is already up to date." -ForegroundColor Green
         exit 0
     }
 }
 
-$zipAsset = $release.assets | Where-Object name -eq 'OrbitCord-win-x64.zip' | Select-Object -First 1
-$hashAsset = $release.assets | Where-Object name -eq 'OrbitCord-win-x64.zip.sha256' | Select-Object -First 1
-if (-not $zipAsset -or -not $hashAsset) {
-    throw "Release $tag is missing OrbitCord-win-x64.zip or its SHA256 file."
-}
-
-$tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("OrbitCord-" + [guid]::NewGuid().ToString('N'))
+$tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("OrbitCord-Install-" + [guid]::NewGuid().ToString('N'))
 $zipPath = Join-Path $tempRoot 'OrbitCord-win-x64.zip'
-$hashPath = "$zipPath.sha256"
+$hashPath = Join-Path $tempRoot 'OrbitCord-win-x64.zip.sha256'
 $payload = Join-Path $tempRoot 'payload'
-$backup = "$installDir.backup-$(Get-Date -Format yyyyMMddHHmmss)"
+$rollback = Join-Path $tempRoot 'rollback'
+$hadExistingInstall = Test-Path -LiteralPath $installDir
 
 New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 try {
     Write-Host "Downloading OrbitCord $displayVersion..." -ForegroundColor Cyan
-    Invoke-WebRequest -Headers $headers -Uri $zipAsset.browser_download_url -OutFile $zipPath
-    Invoke-WebRequest -Headers $headers -Uri $hashAsset.browser_download_url -OutFile $hashPath
+    Invoke-WebRequest -UseBasicParsing -Headers $headers -Uri $zipAsset.browser_download_url -OutFile $zipPath
+    Invoke-WebRequest -UseBasicParsing -Headers $headers -Uri $hashAsset.browser_download_url -OutFile $hashPath
 
-    $expectedHash = ((Get-Content $hashPath -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
-    $actualHash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $expectedHash = ((Get-Content -LiteralPath $hashPath -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
+    if ($expectedHash -notmatch '^[0-9a-f]{64}$') { throw 'Published SHA256 file is invalid.' }
+    $actualHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($expectedHash -ne $actualHash) {
         throw "SHA256 verification failed. Expected $expectedHash, got $actualHash."
     }
     Write-Host 'SHA256 verified.' -ForegroundColor Green
 
     New-Item -ItemType Directory -Path $payload -Force | Out-Null
-    Expand-Archive -Path $zipPath -DestinationPath $payload -Force
-    $newExe = Join-Path $payload 'OrbitCord.exe'
-    if (-not (Test-Path $newExe)) { throw 'Release archive does not contain OrbitCord.exe.' }
+    Expand-Archive -LiteralPath $zipPath -DestinationPath $payload -Force
+    $payloadExe = Join-Path $payload 'OrbitCord.exe'
+    if (-not (Test-Path -LiteralPath $payloadExe)) { throw 'Release archive does not contain OrbitCord.exe.' }
 
-    Get-Process OrbitCord -ErrorAction SilentlyContinue | Stop-Process -Force
-    Start-Sleep -Milliseconds 250
+    Stop-OrbitCord
 
-    if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
-    if (Test-Path $installDir) {
-        Move-Item -Path $installDir -Destination $backup
+    if ($hadExistingInstall) {
+        Write-Host 'Creating temporary rollback copy...' -ForegroundColor DarkGray
+        Copy-DirectoryContents $installDir $rollback
     }
 
     try {
-        New-Item -ItemType Directory -Path (Split-Path -Parent $installDir) -Force | Out-Null
-        Move-Item -Path $payload -Destination $installDir
-        Set-Content -Path $versionFile -Value $displayVersion -Encoding ascii
+        Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+        Copy-DirectoryContents $payload $installDir
+        Set-Content -LiteralPath $versionFile -Value $displayVersion -Encoding ascii
 
-        $exe = Join-Path $installDir 'OrbitCord.exe'
-        $startMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\OrbitCord.lnk'
-        New-OrbitCordShortcut $startMenu $exe
-        if ($DesktopShortcut) {
-            $desktop = [Environment]::GetFolderPath('DesktopDirectory')
-            New-OrbitCordShortcut (Join-Path $desktop 'OrbitCord.lnk') $exe
+        if (-not (Test-Path -LiteralPath $installedExe)) {
+            throw 'OrbitCord.exe was not installed successfully.'
         }
-
-        if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
     }
     catch {
-        Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
-        if (Test-Path $backup) { Move-Item $backup $installDir }
+        Write-Warning 'Install/update failed. Restoring the previous OrbitCord files.'
+        Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue
+        if ($hadExistingInstall -and (Test-Path -LiteralPath $rollback)) {
+            Copy-DirectoryContents $rollback $installDir
+        }
         throw
+    }
+
+    Save-ManagedInstallState $installDir $displayVersion
+
+    # 1.1.7 removes the historical GUI Setup and its Apps/Features registration.
+    Remove-LegacySetupState $installDir
+    Remove-StaleOrbitCordBackups $installDir
+    Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -Directory -Filter 'OrbitCord-Setup-*' -ErrorAction SilentlyContinue |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+    if (-not $UpdateOnly) {
+        try {
+            $startMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\OrbitCord.lnk'
+            New-OrbitCordShortcut $startMenu $installedExe
+            if ($DesktopShortcut) {
+                $desktop = [Environment]::GetFolderPath('DesktopDirectory')
+                New-OrbitCordShortcut (Join-Path $desktop 'OrbitCord.lnk') $installedExe
+            }
+        }
+        catch {
+            Write-Warning "OrbitCord installed, but shortcut creation failed: $($_.Exception.Message)"
+        }
     }
 
     $verb = if ($UpdateOnly) { 'updated' } else { 'installed' }
     Write-Host "OrbitCord $displayVersion $verb successfully." -ForegroundColor Green
     Write-Host "Install directory: $installDir"
-    Write-Host 'User data remains in %LocalAppData%\OrbitCord and is never replaced by updates.'
 
     if (-not $NoLaunch) {
-        Start-Process (Join-Path $installDir 'OrbitCord.exe')
+        Start-Process -FilePath $installedExe -WorkingDirectory $installDir
     }
 }
 finally {
-    Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const testScript = fs.readFileSync(path.join(root, 'scripts/Test-OrbitCord.ps1'), 'utf8');
-if (!testScript.includes('dotnet build src/OrbitCord.App/OrbitCord.App.csproj')) {
-  throw new Error('test gate must compile OrbitCord.App before release');
-}
+const gate = fs.readFileSync(path.join(root, 'scripts/Test-OrbitCord.ps1'), 'utf8');
+assert.match(gate, /dotnet build src\/OrbitCord\.App\/OrbitCord\.App\.csproj/);
+assert.doesNotMatch(gate, /dotnet\s+(?:build|test|restore)[^\n]*OrbitCord\.Installer|Build installer/i);
+assert.match(gate, /src\/OrbitCord\.Installer/, 'retired installer path should be purged during overlay migration');
+assert.match(gate, /PowerShell syntax/);
 console.log('app-build-gate-contract: PASS');

@@ -124,13 +124,31 @@
     scanPreviews();
   }
 
+  // Chromium can filter audio produced by the capturing page from system-audio capture.
+  // Discord remote voices play inside this page, so forcing this constraint prevents them
+  // from being sent back into the screen-share stream as echo.
+  function withOwnAudioRestriction(args) {
+    if (!Array.isArray(args) || args.length === 0) return args;
+    const options = args[0];
+    if (!options || typeof options !== 'object' || !options.audio) return args;
+
+    const audio = options.audio === true
+      ? { restrictOwnAudio: true }
+      : (typeof options.audio === 'object'
+          ? { ...options.audio, restrictOwnAudio: true }
+          : options.audio);
+
+    if (audio === options.audio) return args;
+    return [{ ...options, audio }, ...args.slice(1)];
+  }
+
   function installDisplayCaptureHook() {
     const mediaDevices = navigator?.mediaDevices;
     const original = mediaDevices?.getDisplayMedia;
     if (typeof original !== 'function' || original.__orbitcordWrapped) return;
 
     const wrapped = async function(...args) {
-      const stream = await Reflect.apply(original, this, args);
+      const stream = await Reflect.apply(original, this, withOwnAudioRestriction(args));
       registerCaptureStream(stream);
       return stream;
     };

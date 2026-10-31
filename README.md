@@ -15,71 +15,61 @@ It loads `https://discord.com/app` in its own Windows shell and adds a small nat
 
 ## Install
 
-### Recommended: OrbitCord Setup
+OrbitCord 1.1.7+ uses a **PowerShell-only installer/update flow**. The old graphical `OrbitCord-Setup.exe` has been removed.
 
-Download **`OrbitCord-Setup.exe`** from the latest GitHub Release and run it.
-
-The graphical installer lets you:
-
-- choose the OrbitCord installation folder;
-- optionally create a Desktop shortcut;
-- install a Start Menu shortcut;
-- register OrbitCord in Windows **Installed apps** with an uninstaller;
-- install, update or uninstall OrbitCord from the same compact interface;
-- choose whether OrbitCord should launch when setup finishes (off by default).
-
-The default install location is:
-
-```text
-%LocalAppData%\Programs\OrbitCord
-```
-
-Your settings, WebView2 profile and logs stay in `%LocalAppData%\OrbitCord`, outside the program directory, so updates and uninstalls do not overwrite them.
-
-### PowerShell quick install
-
-The existing PowerShell installer remains available as a lightweight fallback:
+Open PowerShell and run:
 
 ```powershell
 irm https://raw.githubusercontent.com/1004ms/OrbitCord/main/install.ps1 | iex
 ```
 
-### Update with PowerShell
+The default program location is:
+
+```text
+%LocalAppData%\Programs\OrbitCord
+```
+
+`install.ps1` resolves the current GitHub **latest release**, downloads `OrbitCord-win-x64.zip` plus its SHA-256 file, verifies the archive, then installs it. If an older GUI-Setup installation used a custom directory, OrbitCord can migrate/update that existing installation in place.
+
+## Update
 
 ```powershell
 irm https://raw.githubusercontent.com/1004ms/OrbitCord/main/update.ps1 | iex
 ```
 
-### Uninstall
+`update.ps1` always uses the current PowerShell deployment engine and updates the installed client to GitHub `/releases/latest`. The old program directory is copied only into the current temporary transaction directory for rollback; successful updates leave no persistent `.backup-*` directory behind.
 
-The GUI installer registers OrbitCord in **Settings → Apps → Installed apps**, where it can be uninstalled normally.
-
-The PowerShell uninstall path also remains available:
+## Uninstall — full purge
 
 ```powershell
 irm https://raw.githubusercontent.com/1004ms/OrbitCord/main/uninstall.ps1 | iex
 ```
 
-The uninstall flows preserve `%LocalAppData%\OrbitCord` by default.
+Uninstall is intentionally a **full purge**. It stops OrbitCord and removes managed OrbitCord state for the current Windows user, including:
 
-## How releases are secured
+- `%LocalAppData%\Programs\OrbitCord` and any old registered custom install location;
+- legacy `OrbitCord.backup-*` directories;
+- `%LocalAppData%\OrbitCord` settings, icon cache, logs and WebView2 profile;
+- `%AppData%\OrbitCord` if present;
+- OrbitCord Desktop, Start Menu, Recent and taskbar-pin shortcuts it can identify;
+- old `OrbitCord-Setup-*` temporary directories;
+- the historical GUI Setup Apps/Features registry entry.
 
-The installers do not trust downloaded program files blindly.
+It does not delete arbitrary copies of release ZIPs or old Setup executables that you manually saved in unrelated folders such as Downloads.
 
-For every GitHub Release the workflow publishes:
+## Release integrity
+
+Every GitHub Release publishes:
 
 - `OrbitCord-win-x64.zip`
 - `OrbitCord-win-x64.zip.sha256`
-- `OrbitCord-Setup.exe`
-- `OrbitCord-Setup.exe.sha256`
+- `install.ps1`
+- `update.ps1`
+- `uninstall.ps1`
 
-Both the PowerShell installer and the graphical setup download the matching release ZIP, compute SHA-256 locally, compare it with the published checksum, then replace the program files only after verification succeeds. Existing program files are kept as a temporary rollback backup until the replacement is complete.
+The public ZIP is **self-contained**, so users do not need to install the .NET runtime separately. The PowerShell deployment engine verifies SHA-256 before replacing any installed files.
 
 ## Requirements
-
-The public release ZIP and `OrbitCord-Setup.exe` are **self-contained**, so users do not need to install the .NET runtime separately.
-
-You still need:
 
 - Windows 10/11 x64;
 - Microsoft Edge WebView2 Runtime.
@@ -106,7 +96,7 @@ Run the full test suite:
 .\scripts\Test-OrbitCord.ps1
 ```
 
-The test gate builds both `OrbitCord.App` and `OrbitCord.Installer` before running the .NET and Web/static tests.
+The test gate builds `OrbitCord.App`, runs the .NET tests and then all Web/static Node tests.
 
 Build a local Windows package:
 
@@ -122,59 +112,34 @@ For a self-contained app package:
 
 ## Publishing an update
 
-Do not manually build ZIP files or setup executables and upload them to GitHub.
-
-Use:
+Do not manually build or upload release binaries. Use:
 
 ```powershell
-.\PUBLISH-UPDATE.ps1 -Version 1.1.2
+.\PUBLISH-UPDATE.ps1 -Version 1.1.7
 ```
 
 Or a prerelease:
 
 ```powershell
-.\PUBLISH-UPDATE.ps1 -Version 1.1.2-beta.1
+.\PUBLISH-UPDATE.ps1 -Version 1.1.7-beta.1
 ```
 
-The command:
-
-1. requires a clean Git working tree;
-2. updates the centralized version metadata;
-3. runs the complete .NET + Web/static test suite;
-4. creates the release commit;
-5. creates the `v<version>` Git tag;
-6. pushes `main` and the tag;
-7. waits for `.github/workflows/release.yml`;
-8. GitHub Actions builds the self-contained Windows app and GUI installer, creates checksums and publishes the GitHub Release.
-
-This means the downloadable release is always built by GitHub from the tagged public source.
+The command checks the working tree, sets the centralized version, runs the full test suite, creates/pushes the tag and waits for `.github/workflows/release.yml`. GitHub Actions then builds the self-contained Windows ZIP, creates its SHA-256 checksum and publishes the PowerShell scripts with the release.
 
 ## CI
 
 Every push and pull request to `main` runs `.github/workflows/ci.yml` on Windows and checks:
 
-- .NET restore and tests;
-- compilation of the OrbitCord app and GUI installer;
+- .NET restore/tests;
+- OrbitCord app compilation;
 - Web/DOM/static Node tests;
-- a Windows publish build.
+- a Windows package build.
 
 Tags matching `v*` run the release workflow.
 
 ## Local data
 
-OrbitCord uses:
-
-```text
-%LocalAppData%\OrbitCord
-```
-
-Notable files/directories include:
-
-- `Shortcuts.json`
-- `Appearance.json`
-- `Customization\custom-icon.png`
-- `WebView2\`
-- `Logs\`
+OrbitCord uses `%LocalAppData%\OrbitCord`. Notable data includes shortcut settings, appearance/customisation state, WebView2 profile and logs. `uninstall.ps1` removes all of it.
 
 ## Privacy
 
