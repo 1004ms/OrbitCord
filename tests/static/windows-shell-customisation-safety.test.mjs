@@ -18,7 +18,7 @@ assert.match(shell, /NotifyShortcutUpdated/,
   'shortcut icon changes need a targeted update helper');
 assert.match(shell, /NotifyShortcutRenamed/,
   'shortcut rename needs a targeted rename helper');
-assert.match(shell, /shell-v3-/,
+assert.match(shell, /shell-v4-/,
   'new icon materialization must use the current cache generation so Windows cannot reuse broken old ICO cache entries');
 assert.match(shell, /PngBitmapEncoder/,
   'custom PNGs must be normalized before being embedded into ICO');

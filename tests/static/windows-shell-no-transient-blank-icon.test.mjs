@@ -8,7 +8,9 @@ const main = fs.readFileSync(path.join(root, 'src/OrbitCord.App/MainWindow.xaml.
 
 assert.doesNotMatch(main, /\bIcon\s*=\s*null\s*;/,
   'live icon changes must never clear the WPF window icon before installing the replacement');
-assert.match(main, /ApplySelectedWindowIcon\(\);[\s\S]{0,220}ApplyShellAppearance\(\);/,
-  'source-initialized appearance refresh must apply the live window icon before shell shortcuts');
+const sourceInit = main.match(/SourceInitialized \+= \(_, _\) =>\s*\{([\s\S]*?)\n\s*\};/);
+assert.ok(sourceInit, 'SourceInitialized handler missing');
+assert.doesNotMatch(sourceInit[1], /ApplySelectedWindowIcon|ApplyShellAppearance/,
+  'startup must not transiently rewrite window/shell icons inside SourceInitialized');
 
 console.log('windows-shell-no-transient-blank-icon: PASS');

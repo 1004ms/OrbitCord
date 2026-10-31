@@ -9,6 +9,11 @@ internal sealed class WindowsIntegration
 {
     private const string UninstallRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\OrbitCord";
     private const string StartMenuRelativePath = @"Microsoft\Windows\Start Menu\Programs";
+    private const uint ShcneUpdateItem = 0x00002000;
+    private const uint ShcnfPathW = 0x0005;
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern void SHChangeNotify(uint wEventId, uint uFlags, string? dwItem1, string? dwItem2);
 
     public InstalledApplicationInfo? GetInstalledApplication()
     {
@@ -65,6 +70,21 @@ internal sealed class WindowsIntegration
         }
 
         RemoveShortcutsTargeting(desktop, executablePath);
+    }
+
+    public void RepairShortcutAppearance(string executablePath, bool resetAll)
+    {
+        var startMenu = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            StartMenuRelativePath);
+        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        var pinnedTaskbar = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Microsoft", "Internet Explorer", "Quick Launch", "User Pinned", "TaskBar");
+
+        RepairShortcutFolder(startMenu, executablePath, resetAll);
+        RepairShortcutFolder(desktop, executablePath, resetAll);
+        RepairShortcutFolder(pinnedTaskbar, executablePath, resetAll);
     }
 
     public void RemoveShortcuts(string executablePath)
@@ -188,6 +208,55 @@ internal sealed class WindowsIntegration
         }
     }
 
+    private static void RepairShortcutFolder(string folder, string executablePath, bool resetAll)
+    {
+        if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder)) return;
+        var shellType = Type.GetTypeFromProgID("WScript.Shell");
+        if (shellType is null) return;
+
+        object? shellObject = null;
+        try
+        {
+            shellObject = Activator.CreateInstance(shellType);
+            if (shellObject is null) return;
+            dynamic shell = shellObject;
+
+            foreach (var path in Directory.EnumerateFiles(folder, "*.lnk", SearchOption.TopDirectoryOnly))
+            {
+                object? shortcutObject = null;
+                try
+                {
+                    shortcutObject = shell.CreateShortcut(path);
+                    dynamic shortcut = shortcutObject;
+                    if (!PathsEqual((string?)shortcut.TargetPath, executablePath)) continue;
+
+                    var iconLocation = ((string?)shortcut.IconLocation ?? string.Empty).Trim();
+                    var legacyOrbitCordIcon = iconLocation.Contains(@"\OrbitCord\Customization\ShellIcons\shell-v1-", StringComparison.OrdinalIgnoreCase)
+                        || iconLocation.Contains(@"\OrbitCord\Customization\ShellIcons\shell-v2-", StringComparison.OrdinalIgnoreCase)
+                        || iconLocation.Contains(@"\OrbitCord\Customization\ShellIcons\shell-v3-", StringComparison.OrdinalIgnoreCase);
+                    if (!resetAll && !legacyOrbitCordIcon) continue;
+
+                    shortcut.IconLocation = $"{executablePath},0";
+                    shortcut.Description = "OrbitCord";
+                    shortcut.Save();
+                    try { SHChangeNotify(ShcneUpdateItem, ShcnfPathW, path, null); } catch { }
+                }
+                catch
+                {
+                    // A stale shortcut must never block installation.
+                }
+                finally
+                {
+                    ReleaseComObject(shortcutObject);
+                }
+            }
+        }
+        finally
+        {
+            ReleaseComObject(shellObject);
+        }
+    }
+
     private static bool PathsEqual(string? left, string? right)
     {
         if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right)) return false;
@@ -221,14 +290,27 @@ internal sealed class WindowsIntegration
         Directory.CreateDirectory(Path.GetDirectoryName(shortcutPath)!);
         var shellType = Type.GetTypeFromProgID("WScript.Shell")
                         ?? throw new InvalidOperationException("Windows Script Host is unavailable.");
-        dynamic shell = Activator.CreateInstance(shellType)
-                        ?? throw new InvalidOperationException("Could not create Windows Script Host.");
-        dynamic shortcut = shell.CreateShortcut(shortcutPath);
-        shortcut.TargetPath = executablePath;
-        shortcut.WorkingDirectory = Path.GetDirectoryName(executablePath);
-        shortcut.IconLocation = $"{executablePath},0";
-        shortcut.Description = "OrbitCord";
-        shortcut.Save();
+        object? shellObject = null;
+        object? shortcutObject = null;
+        try
+        {
+            shellObject = Activator.CreateInstance(shellType)
+                          ?? throw new InvalidOperationException("Could not create Windows Script Host.");
+            dynamic shell = shellObject;
+            shortcutObject = shell.CreateShortcut(shortcutPath);
+            dynamic shortcut = shortcutObject;
+            shortcut.TargetPath = executablePath;
+            shortcut.WorkingDirectory = Path.GetDirectoryName(executablePath);
+            shortcut.IconLocation = $"{executablePath},0";
+            shortcut.Description = "OrbitCord";
+            shortcut.Save();
+            try { SHChangeNotify(ShcneUpdateItem, ShcnfPathW, shortcutPath, null); } catch { }
+        }
+        finally
+        {
+            ReleaseComObject(shortcutObject);
+            ReleaseComObject(shellObject);
+        }
     }
 
     private static void TryDeleteFile(string path)

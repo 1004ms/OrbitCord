@@ -469,15 +469,15 @@ internal static class WindowsShellIntegration
     private static string MaterializeShellIcon(string pngIconPath)
     {
         var sourcePngBytes = File.ReadAllBytes(pngIconPath);
-        var hashInput = sourcePngBytes.Concat("orbitcord-shell-icon-v3"u8.ToArray()).ToArray();
+        var hashInput = sourcePngBytes.Concat("orbitcord-shell-icon-v4"u8.ToArray()).ToArray();
         var hash = Convert.ToHexString(SHA256.HashData(hashInput)).Substring(0, 16).ToLowerInvariant();
         var iconDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "OrbitCord", "Customization", "ShellIcons");
         Directory.CreateDirectory(iconDirectory);
-        var iconPath = Path.Combine(iconDirectory, $"shell-v3-{hash}.ico");
+        var iconPath = Path.Combine(iconDirectory, $"shell-v4-{hash}.ico");
 
-        if (File.Exists(iconPath) && ValidateShellIcon(iconPath))
+        if (File.Exists(iconPath) && ValidateShellIcon(iconPath) && ValidateNativeIconResource(iconPath))
             return iconPath;
 
         var tempPath = iconPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -488,8 +488,8 @@ internal static class WindowsShellIntegration
                 .ToArray();
 
             WriteIconContainer(tempPath, frames);
-            if (!ValidateShellIcon(tempPath))
-                throw new InvalidDataException("Generated OrbitCord shell icon failed validation.");
+            if (!ValidateShellIcon(tempPath) || !ValidateNativeIconResource(tempPath))
+                throw new InvalidDataException("Generated OrbitCord shell icon failed Windows validation.");
 
             File.Move(tempPath, iconPath, true);
         }
@@ -567,6 +567,27 @@ internal static class WindowsShellIntegration
 
         writer.Flush();
         stream.Flush(flushToDisk: true);
+    }
+
+    private static bool ValidateNativeIconResource(string iconPath)
+    {
+        IntPtr small = IntPtr.Zero;
+        IntPtr big = IntPtr.Zero;
+        try
+        {
+            small = LoadImage(IntPtr.Zero, iconPath, ImageIcon, 32, 32, LrLoadFromFile);
+            big = LoadImage(IntPtr.Zero, iconPath, ImageIcon, 256, 256, LrLoadFromFile);
+            return small != IntPtr.Zero && big != IntPtr.Zero;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            if (small != IntPtr.Zero) _ = DestroyIcon(small);
+            if (big != IntPtr.Zero) _ = DestroyIcon(big);
+        }
     }
 
     private static bool ValidateShellIcon(string iconPath)

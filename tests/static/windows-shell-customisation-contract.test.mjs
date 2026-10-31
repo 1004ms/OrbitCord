@@ -12,7 +12,7 @@ assert.ok(fs.existsSync(shellPath), 'Windows shell integration helper must exist
 const shell = fs.readFileSync(shellPath, 'utf8');
 
 const identityCall = app.indexOf('WindowsShellIntegration.InitializeProcessIdentity();');
-const splashCreation = app.indexOf('var splash = new SplashWindow();');
+const splashCreation = app.indexOf('splash = new SplashWindow();');
 assert.ok(identityCall >= 0 && identityCall < splashCreation,
   'stable AppUserModelID must be established before the first window is created');
 

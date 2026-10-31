@@ -21,17 +21,22 @@ public partial class App : Application
             args.SetObserved();
         };
 
-        var splash = new SplashWindow();
-        splash.Show();
-        await Dispatcher.Yield(DispatcherPriority.Background);
-
-        var main = new MainWindow(_logger);
-        MainWindow = main;
-        main.PrepareForBackgroundPreload();
-        main.Show();
-
+        SplashWindow? splash = null;
+        MainWindow? main = null;
         try
         {
+            splash = new SplashWindow();
+            splash.Show();
+            await Dispatcher.Yield(DispatcherPriority.Background);
+
+            // Window construction, SourceInitialized and Show are part of startup too. Keep
+            // them inside this guard so optional Windows integration can never terminate the
+            // process before OrbitCord can report a useful startup error.
+            main = new MainWindow(_logger);
+            MainWindow = main;
+            main.PrepareForBackgroundPreload();
+            main.Show();
+
             splash.SetStatus("Starting Microsoft Edge WebView2…");
             await main.InitializeAsync(splash.SetStatus);
             splash.SetStatus("Discord is ready.");
@@ -41,19 +46,28 @@ public partial class App : Application
             await splash.PlayExitAsync();
             splash.Close();
             main.RevealAfterSplash();
+            main.QueueShellAppearanceRefresh();
         }
         catch (Exception ex)
         {
             _logger.Write($"Startup failed: {ex}");
-            splash.SetStatus("Startup failed — check the OrbitCord log.");
-            await splash.EnsureMinimumVisibleAsync();
+            if (splash is not null)
+            {
+                try
+                {
+                    splash.SetStatus("Startup failed — check the OrbitCord log.");
+                    await splash.EnsureMinimumVisibleAsync();
+                }
+                catch { }
+            }
+
             MessageBox.Show(
                 $"OrbitCord could not start.\n\n{ex.Message}\n\nLog: {_logger.LogPath}",
                 "OrbitCord startup error",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
-            splash.Close();
-            main.Close();
+            try { splash?.Close(); } catch { }
+            try { main?.Close(); } catch { }
             Shutdown(1);
         }
     }

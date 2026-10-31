@@ -58,10 +58,11 @@ public partial class MainWindow : Window
         _nativeShortcuts.RecordingCompleted += OnNativeShortcutRecordingCompleted;
         SourceInitialized += (_, _) =>
         {
+            // Keep SourceInitialized lean. WPF already received the selected title/icon before
+            // the native handle existed; shell shortcut enumeration is deferred until startup
+            // has completed so customisation can never kill the preload window.
             NativeWindowStyling.ApplyOrbitCordTitleBar(this);
             ApplySelectedAppName();
-            ApplySelectedWindowIcon();
-            ApplyShellAppearance();
             StartNativeShortcuts();
         };
         DiscordView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(9, 10, 15);
@@ -131,6 +132,21 @@ public partial class MainWindow : Window
         Activate();
         Focus();
         UpdateWebViewActivityState();
+    }
+
+    public void QueueShellAppearanceRefresh()
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            try
+            {
+                ApplyShellAppearance();
+            }
+            catch (Exception ex)
+            {
+                _logger.Write($"Deferred Windows shell appearance refresh failed: {ex.Message}");
+            }
+        }));
     }
 
     public async Task InitializeAsync(Action<string> status)

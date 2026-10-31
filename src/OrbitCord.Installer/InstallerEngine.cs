@@ -78,6 +78,7 @@ internal sealed class InstallerEngine : IDisposable
         var backup = installDirectory + ".backup-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss");
         var previousRegisteredInstall = _windows.GetInstalledApplication();
         var previousInstall = previousRegisteredInstall ?? ReadLegacyInstallMarker();
+        var freshInstall = previousInstall is null;
         var movedExistingInstall = false;
         var installedNewPayload = false;
 
@@ -125,6 +126,10 @@ internal sealed class InstallerEngine : IDisposable
                 cancellationToken);
 
             progress?.Report(new InstallerProgress("Creating Windows shortcuts...", 88));
+            // Repair stale OrbitCord-generated icon resources first. On a clean reinstall reset
+            // every OrbitCord shortcut to the embedded EXE icon; on updates only migrate known
+            // shell-v1/v2/v3 resources that could render as a blank document in Explorer.
+            _windows.RepairShortcutAppearance(installedExe, freshInstall);
             _windows.CreateStartMenuShortcut(installedExe);
             _windows.SetDesktopShortcut(installedExe, options.CreateDesktopShortcut);
             _windows.RegisterUninstallEntry(installDirectory, release.Version, installedSetup, installedExe);
