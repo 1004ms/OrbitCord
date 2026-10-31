@@ -26,9 +26,6 @@ internal static class WindowsShellIntegration
     private const uint LrLoadFromFile = 0x00000010;
 
     private static readonly Guid AppUserModelPropertySet = new("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3");
-    private static readonly PropertyKey PkeyAppUserModelRelaunchCommand = new(AppUserModelPropertySet, 2);
-    private static readonly PropertyKey PkeyAppUserModelRelaunchIconResource = new(AppUserModelPropertySet, 3);
-    private static readonly PropertyKey PkeyAppUserModelRelaunchDisplayNameResource = new(AppUserModelPropertySet, 4);
     private static readonly PropertyKey PkeyAppUserModelId = new(AppUserModelPropertySet, 5);
 
     private static readonly int[] ShellIconSizes = [16, 24, 32, 48, 64, 128, 256];
@@ -89,12 +86,6 @@ internal static class WindowsShellIntegration
         ref Guid riid,
         [MarshalAs(UnmanagedType.Interface)] out IPropertyStore propertyStore);
 
-    [DllImport("shell32.dll", PreserveSig = true)]
-    private static extern int SHGetPropertyStoreForWindow(
-        IntPtr hwnd,
-        ref Guid riid,
-        [MarshalAs(UnmanagedType.Interface)] out IPropertyStore propertyStore);
-
     [DllImport("ole32.dll")]
     private static extern int PropVariantClear(ref PropVariant propVariant);
 
@@ -134,18 +125,19 @@ internal static class WindowsShellIntegration
     {
         try
         {
-            var executablePath = Environment.ProcessPath;
-            if (string.IsNullOrWhiteSpace(executablePath) || !File.Exists(executablePath)) return;
             if (string.IsNullOrWhiteSpace(pngIconPath) || !File.Exists(pngIconPath)) return;
 
             var hwnd = new WindowInteropHelper(window).Handle;
             if (hwnd == IntPtr.Zero) return;
 
+            // Keep startup on the narrow, well-supported window-icon path. The previous
+            // implementation also wrote AppUserModel relaunch properties through a manual
+            // COM PROPVARIANT bridge during SourceInitialized; that is unnecessary for the
+            // live taskbar icon and can make startup depend on fragile native marshalling.
             var iconPath = MaterializeShellIcon(pngIconPath);
             ApplyNativeWindowIcon(hwnd, iconPath);
-            ApplyWindowPropertyStore(hwnd, executablePath, displayName, iconPath);
 
-            logger?.Write($"Windows live taskbar appearance synchronized as '{displayName}'.");
+            logger?.Write($"Windows live window/taskbar icon synchronized as '{displayName}'.");
         }
         catch (Exception ex)
         {
@@ -414,32 +406,6 @@ internal static class WindowsShellIntegration
         }
     }
 
-    private static void ApplyWindowPropertyStore(IntPtr hwnd, string executablePath, string displayName, string iconPath)
-    {
-        IPropertyStore? store = null;
-        try
-        {
-            var iid = typeof(IPropertyStore).GUID;
-            var hr = SHGetPropertyStoreForWindow(hwnd, ref iid, out store);
-            if (hr < 0) Marshal.ThrowExceptionForHR(hr);
-
-            // Microsoft requires relaunch command + display name together. The icon is supplied
-            // explicitly so the taskbar/pin never falls back to the EXE's bundled icon.
-            SetStringProperty(store, PkeyAppUserModelRelaunchCommand, QuoteCommand(executablePath));
-            SetStringProperty(store, PkeyAppUserModelRelaunchDisplayNameResource, displayName);
-            SetStringProperty(store, PkeyAppUserModelRelaunchIconResource, $"{iconPath},0");
-
-            // Set the ID last: Windows refreshes taskbar information when this property is set.
-            SetStringProperty(store, PkeyAppUserModelId, AppUserModelId);
-            var commit = store.Commit();
-            if (commit < 0) Marshal.ThrowExceptionForHR(commit);
-        }
-        finally
-        {
-            ReleaseComObject(store);
-        }
-    }
-
     private static void SetStringProperty(IPropertyStore store, PropertyKey propertyKey, string text)
     {
         var value = PropVariant.FromString(text);
@@ -455,9 +421,6 @@ internal static class WindowsShellIntegration
                 _ = PropVariantClear(ref value);
         }
     }
-
-    private static string QuoteCommand(string executablePath)
-        => executablePath.Contains(' ') ? $"\"{executablePath}\"" : executablePath;
 
     private static void ApplyNativeWindowIcon(IntPtr hwnd, string iconPath)
     {
