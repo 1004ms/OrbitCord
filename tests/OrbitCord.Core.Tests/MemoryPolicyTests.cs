@@ -7,11 +7,11 @@ public sealed class MemoryPolicyTests
     [Theory]
     [InlineData(true, false, false, false)]
     [InlineData(false, false, false, false)]
-    [InlineData(true, true, false, true)]
+    [InlineData(true, true, false, false)]
     [InlineData(false, true, false, true)]
     [InlineData(true, true, true, false)]
     [InlineData(false, true, true, true)]
-    public void BootstrapUsesNormalThenSettledRuntimeReturnsToLowUnlessGamingIsActive(
+    public void ActiveRuntimeUsesNormalAndSettledInactiveRuntimeUsesLow(
         bool isActive,
         bool startupSettled,
         bool gamingMode,
@@ -21,21 +21,34 @@ public sealed class MemoryPolicyTests
     }
 
     [Theory]
-    [InlineData(419, true, 30, false)]
-    [InlineData(420, false, 30, false)]
-    [InlineData(420, true, 19, false)]
-    [InlineData(420, true, 20, true)]
-    [InlineData(600, true, 20, true)]
-    public void CleanupUsesThresholdAndCooldown(int memoryMiB, bool settled, int elapsedSeconds, bool expected)
+    [InlineData(127, 60, true, 45, false)]
+    [InlineData(128, 0, true, 44, false)]
+    [InlineData(128, 0, true, 45, true)]
+    [InlineData(159, 112, true, 45, false)]
+    [InlineData(160, 112, true, 45, true)]
+    [InlineData(220, 180, true, 45, false)]
+    [InlineData(220, 160, true, 45, true)]
+    [InlineData(220, 160, false, 60, false)]
+    public void CleanupUsesAdaptiveGrowthBudgetAndCooldown(
+        int memoryMiB,
+        int lastCleanupMiB,
+        bool settled,
+        int elapsedSeconds,
+        bool expected)
     {
         var bytes = memoryMiB * 1024L * 1024L;
-        Assert.Equal(expected, MemoryPolicy.ShouldRequestCleanup(bytes, settled, TimeSpan.FromSeconds(elapsedSeconds)));
+        var baseline = lastCleanupMiB * 1024L * 1024L;
+        Assert.Equal(expected, MemoryPolicy.ShouldRequestCleanup(
+            bytes,
+            baseline,
+            settled,
+            TimeSpan.FromSeconds(elapsedSeconds)));
     }
 
     [Theory]
-    [InlineData(599, false)]
+    [InlineData(383, false)]
+    [InlineData(384, true)]
     [InlineData(600, true)]
-    [InlineData(900, true)]
     public void HardTrimStartsAtHighWaterMark(int memoryMiB, bool expected)
     {
         Assert.Equal(expected, MemoryPolicy.ShouldHardTrim(memoryMiB * 1024L * 1024L));

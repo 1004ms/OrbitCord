@@ -68,21 +68,21 @@ function boot({ setterWorks = true } = {}) {
 
 {
   const fx = boot();
-  assert.equal(fx.api.execute('TOGGLE_MUTE', true), true);
+  assert.equal(await fx.api.execute('TOGGLE_MUTE', true), true);
   assert.equal(fx.state().mute, true, 'mute must change observable MediaEngine state');
   assert.ok(fx.calls.some(call => call[0] === 'setSelfMute' && call[1] === true), 'must use MediaEngine setter');
 }
 
 {
   const fx = boot();
-  assert.equal(fx.api.execute('TOGGLE_DEAFEN', true), true);
+  assert.equal(await fx.api.execute('TOGGLE_DEAFEN', true), true);
   assert.equal(fx.state().deaf, true, 'deafen must change observable MediaEngine state');
   assert.ok(fx.calls.some(call => call[0] === 'setSelfDeaf' && call[1] === true), 'must use MediaEngine setter');
 }
 
 {
   const fx = boot({ setterWorks: false });
-  assert.equal(fx.api.execute('TOGGLE_MUTE', true), false, 'must not report success when voice state did not change');
+  assert.equal(await fx.api.execute('TOGGLE_MUTE', true), false, 'must not report success when voice state did not change');
 }
 
 console.log('shortcut-voice-state-verification: PASS');

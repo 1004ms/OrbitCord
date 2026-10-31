@@ -17,30 +17,20 @@ internal sealed class NativeShortcutService : IDisposable
     private readonly HashSet<int> _rawPressed = [];
     private readonly HashSet<int> _suppressedRawKeys = [];
     private readonly HashSet<Guid> _activeHoldBindings = [];
+    private readonly HashSet<int> _recordingKeys = [];
     private List<ShortcutBinding> _bindings = [];
     private IntPtr _hook;
     private bool _disposed;
-    private bool _isSuspended;
+    private Guid? _recordingBindingId;
 
     public event Action<ShortcutAction, bool>? ActionTriggered;
+    public event Action<Guid, IReadOnlyList<int>>? RecordingPreview;
+    public event Action<Guid, IReadOnlyList<int>>? RecordingCompleted;
+    public event Action<Guid?>? RecordingStateChanged;
 
     public bool IsRunning => _hook != IntPtr.Zero;
-
-    public bool IsSuspended
-    {
-        get => _isSuspended;
-        set
-        {
-            if (_isSuspended == value) return;
-            if (value) ReleaseAllHolds();
-            _isSuspended = value;
-            if (!value)
-            {
-                _rawPressed.Clear();
-                _suppressedRawKeys.Clear();
-            }
-        }
-    }
+    public bool IsRecording => _recordingBindingId.HasValue;
+    public Guid? RecordingBindingId => _recordingBindingId;
 
     public NativeShortcutService(Func<bool> shouldSuppressForegroundMatch)
     {
@@ -65,14 +55,40 @@ internal sealed class NativeShortcutService : IDisposable
         ThrowIfDisposed();
         ReleaseAllHolds();
         _bindings = bindings
-            .Where(x => x.Enabled && x.VirtualKeys.Count > 0 && ShortcutBindingPolicy.IsSafe(x.VirtualKeys))
+            .Where(x => x.Enabled && ShortcutBindingPolicy.IsAllowed(x.VirtualKeys))
             .Select(x => x.Clone())
             .ToList();
     }
 
+    public void BeginRecording(Guid bindingId)
+    {
+        ThrowIfDisposed();
+        if (bindingId == Guid.Empty) return;
+
+        ReleaseAllHolds();
+        _rawPressed.Clear();
+        _suppressedRawKeys.Clear();
+        _recordingKeys.Clear();
+        _recordingBindingId = bindingId;
+        RecordingStateChanged?.Invoke(bindingId);
+        RecordingPreview?.Invoke(bindingId, Array.Empty<int>());
+    }
+
+    public void CancelRecording()
+    {
+        ThrowIfDisposed();
+        if (!_recordingBindingId.HasValue) return;
+
+        _recordingBindingId = null;
+        _recordingKeys.Clear();
+        _rawPressed.Clear();
+        _suppressedRawKeys.Clear();
+        RecordingStateChanged?.Invoke(null);
+    }
+
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode < 0 || _disposed || _isSuspended)
+        if (nCode < 0 || _disposed)
             return CallNextHookEx(_hook, nCode, wParam, lParam);
 
         var data = Marshal.PtrToStructure<KbdLlHookStruct>(lParam);
@@ -81,6 +97,9 @@ internal sealed class NativeShortcutService : IDisposable
 
         var message = unchecked((int)(long)wParam);
         var rawVk = unchecked((int)data.vkCode);
+
+        if (IsRecording)
+            return HandleRecordingInput(message, rawVk, nCode, wParam, lParam);
 
         if (message is WmKeyDown or WmSysKeyDown)
         {
@@ -93,7 +112,11 @@ internal sealed class NativeShortcutService : IDisposable
             }
 
             var current = CurrentNormalizedKeys();
-            var matches = _bindings.Where(binding => ChordEquals(binding.VirtualKeys, current)).ToArray();
+            var foreground = _shouldSuppressForegroundMatch();
+            var matches = _bindings
+                .Where(binding => ChordEquals(binding.VirtualKeys, current))
+                .ToArray();
+
             if (matches.Length > 0)
             {
                 foreach (var binding in matches)
@@ -110,7 +133,7 @@ internal sealed class NativeShortcutService : IDisposable
                     }
                 }
 
-                if (_shouldSuppressForegroundMatch())
+                if (foreground)
                 {
                     _suppressedRawKeys.Add(rawVk);
                     return new IntPtr(1);
@@ -138,8 +161,59 @@ internal sealed class NativeShortcutService : IDisposable
         return CallNextHookEx(_hook, nCode, wParam, lParam);
     }
 
+    private IntPtr HandleRecordingInput(int message, int rawVk, int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        var bindingId = _recordingBindingId;
+        if (!bindingId.HasValue)
+            return CallNextHookEx(_hook, nCode, wParam, lParam);
+
+        if (message is WmKeyDown or WmSysKeyDown)
+        {
+            if (_rawPressed.Add(rawVk))
+            {
+                _recordingKeys.Add(NativeKeyCode.Normalize(rawVk));
+                RecordingPreview?.Invoke(bindingId.Value, SortedChord(_recordingKeys));
+            }
+            return new IntPtr(1);
+        }
+
+        if (message is WmKeyUp or WmSysKeyUp)
+        {
+            _rawPressed.Remove(rawVk);
+            if (_rawPressed.Count == 0)
+            {
+                var chord = SortedChord(_recordingKeys);
+                if (ShortcutBindingPolicy.IsAllowed(chord))
+                {
+                    _recordingBindingId = null;
+                    _recordingKeys.Clear();
+                    RecordingStateChanged?.Invoke(null);
+                    RecordingCompleted?.Invoke(bindingId.Value, chord);
+                }
+                else
+                {
+                    // A modifier-only press is not a completed shortcut. Reset
+                    // the attempt and keep recording until a real key is used.
+                    _recordingKeys.Clear();
+                    RecordingPreview?.Invoke(bindingId.Value, Array.Empty<int>());
+                }
+            }
+            return new IntPtr(1);
+        }
+
+        return new IntPtr(1);
+    }
+
     private HashSet<int> CurrentNormalizedKeys() =>
         _rawPressed.Select(NativeKeyCode.Normalize).ToHashSet();
+
+    private static IReadOnlyList<int> SortedChord(IEnumerable<int> keys) =>
+        keys
+            .Select(NativeKeyCode.Normalize)
+            .Where(vk => vk > 0)
+            .Distinct()
+            .OrderBy(NativeKeyCode.SortKey)
+            .ToArray();
 
     private static bool ChordEquals(IReadOnlyCollection<int> chord, HashSet<int> current)
     {
@@ -164,6 +238,8 @@ internal sealed class NativeShortcutService : IDisposable
         if (_disposed) return;
         _disposed = true;
         ReleaseAllHolds();
+        _recordingBindingId = null;
+        _recordingKeys.Clear();
         if (_hook != IntPtr.Zero)
         {
             UnhookWindowsHookEx(_hook);

@@ -5,6 +5,7 @@
   let webpackRequire = null;
   let audioActions = null;
   let mediaStore = null;
+  let mediaStateStore = null;
 
   const postStatus = (action, ok, detail) => {
     try {
@@ -67,9 +68,11 @@
     try {
       audioActions ||= runtime?.findByProps?.('toggleSelfMute', 'toggleSelfDeaf') || null;
       mediaStore ||= runtime?.findByProps?.('getMediaEngine', 'getMode') || null;
+      mediaStateStore ||= runtime?.findByProps?.('isSelfMute', 'isSelfDeaf') || null;
     } catch {}
     audioActions ||= findByPropsFallback('toggleSelfMute', 'toggleSelfDeaf');
     mediaStore ||= findByPropsFallback('getMediaEngine', 'getMode');
+    mediaStateStore ||= findByPropsFallback('isSelfMute', 'isSelfDeaf');
   }
 
   const normalizeLabel = value => String(value || '')
@@ -100,7 +103,11 @@
       return [...document.querySelectorAll('button, [role="button"]')]
         .filter(element => !element?.closest?.('#orbitcord-settings-section, #orbitcord-settings-panel-host, [data-orbitcord-owned="true"]'))
         .filter(visibleControl)
-        .map(element => ({ element, label: controlLabel(element) }));
+        .map(element => ({
+          element,
+          label: controlLabel(element),
+          ariaLabel: normalizeLabel(element?.getAttribute?.('aria-label'))
+        }));
     } catch { return []; }
   }
 
@@ -110,8 +117,9 @@
     return /\bmute\b|\bunmute\b|microphone|microfono|silenzia|disattiva microfono|riattiva microfono/.test(label);
   }
 
-  function isDeafenLabel(label) {
-    return !!label && /deafen|undeafen|headphones|cuffie|disattiva audio|riattiva audio/.test(label);
+  function isExactDeafenAriaLabel(label) {
+    if (!label) return false;
+    return /^(deafen|undeafen|disattiva audio|riattiva audio|disattiva altoparlanti|riattiva altoparlanti)$/.test(label.trim());
   }
 
   function sortBottomControls(candidates) {
@@ -126,93 +134,157 @@
   }
 
   function clickDiscordVoiceControl(kind) {
-    const candidates = discordControls().filter(item => kind === 'mute' ? isMuteLabel(item.label) : isDeafenLabel(item.label));
+    const candidates = discordControls().filter(item => {
+      if (kind === 'mute') return isMuteLabel(item.label);
+      // Deafen fallback is intentionally stricter than mute: only click a visible
+      // Discord-owned button whose aria-label exactly names the voice action.
+      // This avoids opening nearby menus/settings that merely contain the word.
+      return isExactDeafenAriaLabel(item.ariaLabel);
+    });
     const chosen = sortBottomControls(candidates)[0]?.element;
     if (!chosen) return false;
     try { chosen.click?.(); return true; }
     catch { return false; }
   }
 
+  function forEachVoiceConnection(visitor) {
+    ensureModules();
+    let engine = null;
+    try { engine = mediaStore?.getMediaEngine?.() || null; } catch {}
+    if (!engine || typeof visitor !== 'function') return 0;
+
+    let visited = 0;
+    const seen = new Set();
+    const visit = connection => {
+      if (!connection || seen.has(connection)) return;
+      seen.add(connection);
+      visited++;
+      try { visitor(connection); } catch {}
+    };
+
+    // Do not assume Discord still uses the literal string "default" as the
+    // MediaEngine context. Some builds accept the filter argument but simply
+    // visit zero connections when it no longer matches, which previously made
+    // OrbitCord report audio/media as found while being unable to read state.
+    if (typeof engine.eachConnection === 'function') {
+      try { engine.eachConnection(visit); } catch {}
+      if (visited === 0) {
+        try { engine.eachConnection(visit, 'default'); } catch {}
+      }
+    }
+
+    try {
+      const connections = engine.connections;
+      if (connections && Symbol.iterator in Object(connections)) {
+        for (const connection of connections) {
+          if (Array.isArray(connection) && connection.length > 1) visit(connection[1]);
+          else visit(connection);
+        }
+      } else if (connections && typeof connections === 'object') {
+        for (const connection of Object.values(connections)) visit(connection);
+      }
+    } catch {}
+
+    return visited;
+  }
+
   function readVoiceState(kind) {
     ensureModules();
 
-    // Discord's Flux/media store can lag the live voice connection by a tick.
-    // Read the MediaEngine connection first so verification reflects the state
-    // that setSelfMute/setSelfDeaf actually changed.
-    let engine = null;
-    try { engine = mediaStore?.getMediaEngine?.() || null; } catch {}
+    // The live MediaEngine connection is the closest thing to ground truth.
+    // Discord's Flux/store view can lag it by a tick, especially around deafen.
     let observed = null;
-    const inspect = connection => {
-      if (observed != null || !connection || (connection.context && connection.context !== 'default')) return;
+    forEachVoiceConnection(connection => {
+      if (observed != null) return;
       try {
         const getter = kind === 'mute' ? connection.getSelfMute : connection.getSelfDeaf;
         const property = kind === 'mute' ? connection.selfMute : connection.selfDeaf;
         if (typeof getter === 'function') observed = !!Reflect.apply(getter, connection, []);
         else if (typeof property === 'boolean') observed = property;
       } catch {}
-    };
-    if (typeof engine?.eachConnection === 'function') {
-      try { engine.eachConnection(inspect, 'default'); }
-      catch { try { engine.eachConnection(inspect); } catch {} }
-    } else if (engine?.connections && Symbol.iterator in Object(engine.connections)) {
-      for (const connection of engine.connections) inspect(connection);
-    }
+    });
     if (observed != null) return observed;
+
+    // Fall back to the current MediaEngineStore / split state store APIs.
+    for (const store of [mediaStore, mediaStateStore]) {
+      try {
+        const direct = kind === 'mute' ? store?.isSelfMute : store?.isSelfDeaf;
+        if (typeof direct === 'function') return !!Reflect.apply(direct, store, []);
+        const legacy = kind === 'mute' ? store?.isMute : store?.isDeaf;
+        if (typeof legacy === 'function') return !!Reflect.apply(legacy, store, []);
+      } catch {}
+    }
 
     try {
       const storeMethod = kind === 'mute' ? mediaStore?.isSelfMute : mediaStore?.isSelfDeaf;
-      if (typeof storeMethod === 'function') return !!Reflect.apply(storeMethod, mediaStore, ['default']);
+      if (typeof storeMethod === 'function') {
+        try { return !!Reflect.apply(storeMethod, mediaStore, []); }
+        catch { return !!Reflect.apply(storeMethod, mediaStore, ['default']); }
+      }
     } catch {}
     return null;
   }
 
-  function setVoiceStateViaMediaEngine(kind, wanted) {
+  const voiceStateDelay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  async function waitForVoiceState(kind, predicate, timeoutMs = 450) {
+    const deadline = Date.now() + timeoutMs;
+    do {
+      const state = readVoiceState(kind);
+      if (state != null && predicate(state)) return true;
+      if (Date.now() >= deadline) break;
+      await voiceStateDelay(25);
+    } while (true);
+    return false;
+  }
+
+  async function setVoiceStateViaMediaEngine(kind, wanted) {
     ensureModules();
-    let engine;
-    try { engine = mediaStore?.getMediaEngine?.(); } catch { return false; }
-    if (!engine) return false;
     let setterCalled = false;
-    const apply = connection => {
-      if (!connection || (connection.context && connection.context !== 'default')) return;
+    forEachVoiceConnection(connection => {
       const setter = kind === 'mute' ? connection.setSelfMute : connection.setSelfDeaf;
       if (typeof setter !== 'function') return;
       try {
         Reflect.apply(setter, connection, [!!wanted]);
         setterCalled = true;
       } catch {}
-    };
-    if (typeof engine.eachConnection === 'function') {
-      try { engine.eachConnection(apply, 'default'); }
-      catch { try { engine.eachConnection(apply); } catch {} }
-    } else if (engine.connections && Symbol.iterator in Object(engine.connections)) {
-      for (const connection of engine.connections) apply(connection);
-    }
+    });
     if (!setterCalled) return false;
-    const after = readVoiceState(kind);
-    return after == null ? false : after === !!wanted;
+    return waitForVoiceState(kind, state => state === !!wanted);
   }
 
-  function toggleVoiceStateViaMediaEngine(kind) {
-    const before = readVoiceState(kind);
-    if (before == null) return false;
-    return setVoiceStateViaMediaEngine(kind, !before);
-  }
-
-  function invokeAudioActionVerified(kind) {
+  async function invokeAudioActionVerified(kind, before) {
     ensureModules();
-    const before = readVoiceState(kind);
     const action = kind === 'mute' ? audioActions?.toggleSelfMute : audioActions?.toggleSelfDeaf;
     if (typeof action !== 'function') return false;
-    try { Reflect.apply(action, audioActions, [{ usedKeybind: true, location: 'OrbitCord Shortcut' }]); }
-    catch { try { Reflect.apply(action, audioActions, []); } catch { return false; } }
-    const after = readVoiceState(kind);
-    return before != null && after != null && after !== before;
+    try { Reflect.apply(action, audioActions, []); }
+    catch {
+      try { Reflect.apply(action, audioActions, [{ usedKeybind: true, location: 'OrbitCord Shortcut' }]); }
+      catch { return false; }
+    }
+
+    // If MediaEngine is temporarily unavailable we still invoke Discord's own
+    // action, but we do not claim success without an observable state change.
+    if (before == null) return false;
+    return waitForVoiceState(kind, state => state !== before);
   }
 
-  function toggleVoice(kind) {
-    if (toggleVoiceStateViaMediaEngine(kind)) return true;
-    if (invokeAudioActionVerified(kind)) return true;
-    return clickDiscordVoiceControl(kind === 'mute' ? 'mute' : 'deafen');
+  async function toggleVoice(kind) {
+    ensureModules();
+    const before = readVoiceState(kind);
+
+    // Prefer Discord's own voice action. It keeps Discord's UI/Flux state and
+    // mute<->deafen coupling consistent. The MediaEngine can publish the new
+    // state a few ticks later, so do not immediately cascade into another toggle.
+    if (await invokeAudioActionVerified(kind, before)) return true;
+
+    // If Discord's action module is unavailable or did not produce a verified
+    // state change, set the live default MediaEngine connection explicitly.
+    if (before != null && await setVoiceStateViaMediaEngine(kind, !before)) return true;
+
+    // Final fallback: invoke Discord's own visible voice control. Deafen uses an
+    // exact aria-label match, so this cannot guess an adjacent menu/settings item.
+    return clickDiscordVoiceControl(kind);
   }
 
   function unavailableDetail(action) {
@@ -224,17 +296,18 @@
       `webpack=${diagnostics?.mainRequireCaptured ? 'captured' : 'missing'}`,
       `cache=${Number(diagnostics?.cacheSize || 0)}`,
       `audio=${audioActions ? 'found' : 'missing'}`,
-      `media=${mediaStore ? 'found' : 'missing'}`
+      `media=${mediaStore ? 'found' : 'missing'}`,
+      `state=${mediaStateStore ? 'found' : 'missing'}`
     ].join('; ');
   }
 
-  function execute(action, pressed) {
+  async function execute(action, pressed) {
     try {
       if (!pressed) return true;
       let ok = false;
       switch (action) {
-        case 'TOGGLE_MUTE': ok = toggleVoice('mute'); break;
-        case 'TOGGLE_DEAFEN': ok = toggleVoice('deaf'); break;
+        case 'TOGGLE_MUTE': ok = await toggleVoice('mute'); break;
+        case 'TOGGLE_DEAFEN': ok = await toggleVoice('deaf'); break;
         default: ok = false; break;
       }
       postStatus(action, ok, ok ? 'verified-state-change' : unavailableDetail(action));
@@ -249,7 +322,7 @@
     window.chrome?.webview?.addEventListener('message', event => {
       const data = event?.data;
       if (!data || data.type !== 'orbitcord-shortcut-execute') return;
-      execute(String(data.action || ''), !!data.pressed);
+      void execute(String(data.action || ''), !!data.pressed);
     });
   } catch {}
 

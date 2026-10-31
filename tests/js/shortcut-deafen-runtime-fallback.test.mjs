@@ -32,9 +32,10 @@ const document = {
   querySelectorAll(selector) { return selector.includes('button') ? [deafenButton] : []; }
 };
 
+const statuses = [];
 const webview = {
   addEventListener(type, cb) { if (type === 'message') listeners.push(cb); },
-  postMessage() {}
+  postMessage(payload) { statuses.push(payload); }
 };
 
 const windowObj = {
@@ -69,5 +70,6 @@ await new Promise(resolve => setTimeout(resolve, 25));
 listeners.forEach(cb => cb({ data: { type: 'orbitcord-shortcut-execute', action: 'TOGGLE_DEAFEN', pressed: true } }));
 await new Promise(resolve => setTimeout(resolve, 10));
 
-assert.equal(clicked, 1, 'Deafen must fall back to the visible Discord headphones control instead of treating dispatch() itself as proof that Discord handled the action');
+assert.equal(clicked, 1, 'Deafen must use the exact visible Discord Deafen control when internal action modules are unavailable');
+assert.ok(statuses.some(x => x?.type === 'orbitcord-shortcut-status' && x.action === 'TOGGLE_DEAFEN' && x.ok === true), 'exact Discord Deafen fallback should report success');
 console.log('shortcut-deafen-runtime-fallback: PASS');

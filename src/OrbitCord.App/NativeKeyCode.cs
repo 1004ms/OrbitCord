@@ -16,10 +16,13 @@ internal static class NativeKeyCode
         0xA0 or 0xA1 => Shift,
         0xA2 or 0xA3 => Control,
         0xA4 or 0xA5 => Alt,
+        RightWindows => LeftWindows,
         _ => vk
     };
 
-    public static int SortKey(int vk) => vk switch
+    public static bool IsModifier(int raw) => Normalize(raw) is Shift or Control or Alt or LeftWindows;
+
+    public static int SortKey(int vk) => Normalize(vk) switch
     {
         Control => 0,
         Shift => 1,

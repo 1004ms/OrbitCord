@@ -50,7 +50,7 @@ const context = vm.createContext({
 });
 vm.runInContext(source, context);
 
-assert.equal(windowObj.__orbitcordShortcutActionsTest.execute('TOGGLE_DEAFEN', true), true,
+assert.equal(await windowObj.__orbitcordShortcutActionsTest.execute('TOGGLE_DEAFEN', true), true,
   'Deafen must verify against the media-engine connection when the Flux store is stale');
 assert.equal(connectionDeaf, true, 'the default media-engine connection must actually become deafened');
 console.log('shortcut-deafen-stale-store: PASS');

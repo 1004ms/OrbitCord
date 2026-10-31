@@ -59,6 +59,7 @@ vm.runInContext(`
 
 const send = data => listeners.forEach(cb => cb({ data }));
 send({ type: 'orbitcord-shortcut-execute', action: 'TOGGLE_DEAFEN', pressed: true });
+await new Promise(resolve => setTimeout(resolve, 10));
 assert.ok(calls.some(x => x[0] === 'setSelfDeaf' || x[0] === 'deafen'), 'deafen must resolve from captured main webpack cache');
 assert.equal(statuses.at(-1)?.ok, true);
 

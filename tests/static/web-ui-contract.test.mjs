@@ -15,5 +15,6 @@ assert.match(settings,/settingsLifecycleObserver\.observe\(parent, \{ childList:
 assert.doesNotMatch(settings,/settingsLifecycleObserver\.observe\(document\.(?:body|documentElement)/,'settings must not observe the whole Discord DOM continuously');
 assert.doesNotMatch(actions, /setInterval\s*\(/, 'shortcut module discovery must use bounded backoff rather than interval polling');
 assert.match(actions, /function clickDiscordVoiceControl\(kind\)/, 'voice DOM fallback missing');
-assert.match(actions, /kind === 'mute' \? 'mute' : 'deafen'/, 'mute/deafen DOM routing missing');
+assert.match(actions, /function isExactDeafenAriaLabel\(label\)/, 'strict deafen aria-label guard missing');
+assert.match(actions, /return clickDiscordVoiceControl\(kind\);/, 'voice DOM fallback must support mute and strict deafen');
 console.log('web-ui-contract: PASS');

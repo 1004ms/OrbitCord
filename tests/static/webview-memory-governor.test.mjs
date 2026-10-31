@@ -8,12 +8,14 @@ const policy = fs.readFileSync(path.join(root, 'src/OrbitCord.Core/MemoryPolicy.
 const tuning = fs.readFileSync(path.join(root, 'src/OrbitCord.App/WebViewProcessTuning.cs'), 'utf8');
 const main = fs.readFileSync(path.join(root, 'src/OrbitCord.App/MainWindow.xaml.cs'), 'utf8');
 
-assert.match(policy, /SoftCleanupThresholdBytes\s*=\s*420L\s*\*\s*1024\s*\*\s*1024/,
-  'soft cleanup threshold must be explicit and bounded at 420 MiB');
-assert.match(policy, /HardTrimThresholdBytes\s*=\s*600L\s*\*\s*1024\s*\*\s*1024/,
-  'hard trim threshold must be explicit and bounded at 600 MiB');
-assert.match(policy, /CleanupCooldown\s*=\s*TimeSpan\.FromSeconds\(20\)/,
-  'cleanup must have a 20 second cooldown to avoid trim thrash');
+assert.match(policy, /SoftCleanupFloorBytes\s*=\s*128L\s*\*\s*1024\s*\*\s*1024/,
+  'adaptive cleanup must have a 128 MiB absolute floor');
+assert.match(policy, /CleanupGrowthBudgetBytes\s*=\s*48L\s*\*\s*1024\s*\*\s*1024/,
+  'adaptive cleanup must react after 48 MiB of growth from the last cleanup baseline');
+assert.match(policy, /HardTrimThresholdBytes\s*=\s*384L\s*\*\s*1024\s*\*\s*1024/,
+  'hard trim must remain a higher-water fallback at 384 MiB');
+assert.match(policy, /CleanupCooldown\s*=\s*TimeSpan\.FromSeconds\(45\)/,
+  'cleanup must have a 45 second cooldown to avoid pressure thrash');
 assert.match(tuning, /EmptyWorkingSet/,
   'high-water fallback must be able to trim WebView2 working sets');
 assert.match(tuning, /GetWorkingSetBytes/,

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Win32;
 using System.IO;
+using System.Runtime.InteropServices;
 
 namespace OrbitCord.Installer;
 
@@ -43,29 +44,41 @@ internal sealed class WindowsIntegration
     public void CreateStartMenuShortcut(string executablePath)
     {
         var programs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), StartMenuRelativePath);
+        if (FindShortcutTargeting(programs, executablePath) is not null) return;
         CreateShortcut(Path.Combine(programs, "OrbitCord.lnk"), executablePath);
     }
 
     public void SetDesktopShortcut(string executablePath, bool enabled)
     {
         var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-        var shortcut = Path.Combine(desktop, "OrbitCord.lnk");
         if (enabled)
-            CreateShortcut(shortcut, executablePath);
-        else if (File.Exists(shortcut))
-            File.Delete(shortcut);
+        {
+            if (FindShortcutTargeting(desktop, executablePath) is null)
+                CreateShortcut(Path.Combine(desktop, "OrbitCord.lnk"), executablePath);
+            return;
+        }
+
+        RemoveShortcutsTargeting(desktop, executablePath);
     }
 
-    public void RemoveShortcuts()
+    public void RemoveShortcuts(string executablePath)
     {
         var startMenu = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            StartMenuRelativePath,
-            "OrbitCord.lnk");
-        var desktop = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "OrbitCord.lnk");
+            StartMenuRelativePath);
+        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        var pinnedTaskbar = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Microsoft", "Internet Explorer", "Quick Launch", "User Pinned", "TaskBar");
 
-        TryDeleteFile(startMenu);
-        TryDeleteFile(desktop);
+        RemoveShortcutsTargeting(startMenu, executablePath);
+        RemoveShortcutsTargeting(desktop, executablePath);
+        RemoveShortcutsTargeting(pinnedTaskbar, executablePath);
+
+        // Also clean the historical fixed names in case one is damaged and can no longer
+        // be inspected through WScript.Shell.
+        TryDeleteFile(Path.Combine(startMenu, "OrbitCord.lnk"));
+        TryDeleteFile(Path.Combine(desktop, "OrbitCord.lnk"));
     }
 
     public void RegisterUninstallEntry(string installDirectory, string version, string setupExecutable, string appExecutable)
@@ -117,6 +130,84 @@ internal sealed class WindowsIntegration
             UseShellExecute = false,
             WindowStyle = ProcessWindowStyle.Hidden
         });
+    }
+
+    private static string? FindShortcutTargeting(string folder, string executablePath)
+    {
+        if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder)) return null;
+        var shellType = Type.GetTypeFromProgID("WScript.Shell");
+        if (shellType is null) return null;
+
+        object? shellObject = null;
+        try
+        {
+            shellObject = Activator.CreateInstance(shellType);
+            if (shellObject is null) return null;
+            dynamic shell = shellObject;
+
+            foreach (var path in Directory.EnumerateFiles(folder, "*.lnk", SearchOption.TopDirectoryOnly))
+            {
+                object? shortcutObject = null;
+                try
+                {
+                    shortcutObject = shell.CreateShortcut(path);
+                    dynamic shortcut = shortcutObject;
+                    if (PathsEqual((string?)shortcut.TargetPath, executablePath))
+                        return path;
+                }
+                catch
+                {
+                    // Ignore stale or unreadable shortcuts.
+                }
+                finally
+                {
+                    ReleaseComObject(shortcutObject);
+                }
+            }
+        }
+        finally
+        {
+            ReleaseComObject(shellObject);
+        }
+
+        return null;
+    }
+
+    private static void RemoveShortcutsTargeting(string folder, string executablePath)
+    {
+        while (FindShortcutTargeting(folder, executablePath) is { } shortcut)
+        {
+            try { File.Delete(shortcut); }
+            catch { break; }
+        }
+    }
+
+    private static bool PathsEqual(string? left, string? right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right)) return false;
+        try
+        {
+            var a = Path.GetFullPath(Environment.ExpandEnvironmentVariables(left.Trim().Trim('"')));
+            var b = Path.GetFullPath(Environment.ExpandEnvironmentVariables(right.Trim().Trim('"')));
+            return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return string.Equals(left.Trim().Trim('"'), right.Trim().Trim('"'), StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private static void ReleaseComObject(object? value)
+    {
+        if (value is null) return;
+        try
+        {
+            if (Marshal.IsComObject(value)) Marshal.FinalReleaseComObject(value);
+        }
+        catch
+        {
+            // Best effort COM cleanup.
+        }
     }
 
     private static void CreateShortcut(string shortcutPath, string executablePath)

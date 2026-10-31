@@ -218,22 +218,26 @@ function findButtonByText(root, needle) {
 const addButton = findButtonByText(page, 'Aggiungi');
 assert.ok(addButton, 'custom page must allow adding shortcuts');
 addButton.dispatch('click');
+assert.ok(posted.some(m => m?.type === 'orbitcord-shortcut-create'), 'Add must be a native command');
+for (const cb of webviewListeners) cb({ data: {
+  type: 'orbitcord-shortcuts-state', revision: 1, hookRunning: true,
+  actions: [{ id: 'TOGGLE_MUTE', name: 'Attiva/Disattiva microfono', description: 'mute', isHold: false }],
+  bindings: [{ id: 'draft-id', action: 'TOGGLE_MUTE', virtualKeys: [], enabled: true, chord: '' }]
+}});
 const recordButton = findButtonByText(page, 'Imposta tasti');
 assert.ok(recordButton, 'new shortcut must expose chord recording');
 recordButton.dispatch('click');
-assert.ok(posted.some(m => m?.type === 'orbitcord-shortcut-recording' && m.active === true), 'recording must suspend native shortcut hook');
-
-const keydown = (windowListeners.get('keydown') || [])[0];
-assert.ok(keydown, 'recording keydown capture handler must exist');
-keydown({
-  code: 'KeyK', keyCode: 0x4B, which: 0x4B,
-  ctrlKey: true, shiftKey: true, altKey: false, metaKey: false,
-  preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {}
-});
-const save = [...posted].reverse().find(m => m?.type === 'orbitcord-shortcuts-save');
-assert.ok(save, 'recorded chord must be persisted through the native host');
-assert.ok(save.bindings.some(b => JSON.stringify(b.virtualKeys) === JSON.stringify([0x11, 0x10, 0x4B])), 'Ctrl+Shift+K must be sent as Windows virtual keys');
-assert.ok(posted.some(m => m?.type === 'orbitcord-shortcut-recording' && m.active === false), 'recording must resume native hook');
+assert.ok(posted.some(m => m?.type === 'orbitcord-shortcut-recording-begin' && m.id === 'draft-id'), 'recording must start natively');
+for (const cb of webviewListeners) cb({ data: { type: 'orbitcord-shortcut-recording-state', active: true, id: 'draft-id' } });
+for (const cb of webviewListeners) cb({ data: { type: 'orbitcord-shortcut-recording-preview', id: 'draft-id', virtualKeys: [0x11, 0x10, 0x4B], chord: 'Ctrl + Shift + K' } });
+for (const cb of webviewListeners) cb({ data: { type: 'orbitcord-shortcut-recording-state', active: false, id: null } });
+for (const cb of webviewListeners) cb({ data: {
+  type: 'orbitcord-shortcuts-state', revision: 2, hookRunning: true,
+  actions: [{ id: 'TOGGLE_MUTE', name: 'Attiva/Disattiva microfono', description: 'mute', isHold: false }],
+  bindings: [{ id: 'draft-id', action: 'TOGGLE_MUTE', virtualKeys: [0x11, 0x10, 0x4B], enabled: true, chord: 'Ctrl + Shift + K' }]
+}});
+assert.deepEqual(Array.from(windowObj.__orbitcordSettingsTest.getBindingsForTest()[0].virtualKeys), [0x11, 0x10, 0x4B], 'native completion must persist Ctrl+Shift+K');
+assert.equal((windowListeners.get('keydown') || []).length, 0, 'WebView must not capture shortcut keydown');
 
 nativeTab.dispatch('click');
 assert.equal(document.getElementById('orbitcord-shortcut-page'), null, 'clicking a normal Discord settings tab must leave OrbitCord Shortcut page');

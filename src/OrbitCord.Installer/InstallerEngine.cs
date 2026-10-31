@@ -190,7 +190,7 @@ internal sealed class InstallerEngine : IDisposable
 
         progress?.Report(new InstallerProgress("Closing OrbitCord...", 25));
         _windows.StopOrbitCordProcesses();
-        _windows.RemoveShortcuts();
+        _windows.RemoveShortcuts(appExe);
         _windows.RemoveUninstallEntry();
 
         progress?.Report(new InstallerProgress("Removing program files...", 70));

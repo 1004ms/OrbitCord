@@ -8,8 +8,10 @@
   const SECTION_ID = 'orbitcord-settings-section';
   const SHORTCUT_TAB_ID = 'orbitcord-shortcut-tab';
   const CUSTOM_TAB_ID = 'orbitcord-customisation-tab';
+  const OPTIONS_TAB_ID = 'orbitcord-options-tab';
   const SHORTCUT_PAGE_ID = 'orbitcord-shortcut-page';
   const CUSTOM_PAGE_ID = 'orbitcord-customisation-page';
+  const OPTIONS_PAGE_ID = 'orbitcord-options-page';
   const PANEL_HOST_ID = 'orbitcord-settings-panel-host';
 
   const FALLBACK_ACTIONS = [
@@ -22,16 +24,19 @@
   let actions = FALLBACK_ACTIONS.map(action => ({ ...action }));
   let bindings = [];
   let hookRunning = false;
+  let shortcutRevision = -1;
   let recordingId = null;
+  let recordingPreviewChord = '';
   let openActionPickerId = null;
   let lastShortcutStatus = null;
+  let shortcutInputError = '';
   let activeEntryKey = null;
   let selectedIcon = 'purple';
   let customIconDataUrl = '';
   let customisationError = '';
   let customAppName = '';
-  let cleanedLegacyBindings = false;
   let displayAppName = 'OrbitCord';
+  let disableSelfStreamPreview = false;
 
   const iconPresetData = new Map();
   const ICON_PRESETS = [
@@ -43,7 +48,8 @@
   ];
   const SETTINGS_ENTRIES = [
     { key: 'shortcut', title: 'Shortcut', tabId: SHORTCUT_TAB_ID, pageId: SHORTCUT_PAGE_ID },
-    { key: 'customisation', title: 'Customisation', tabId: CUSTOM_TAB_ID, pageId: CUSTOM_PAGE_ID }
+    { key: 'customisation', title: 'Customisation', tabId: CUSTOM_TAB_ID, pageId: CUSTOM_PAGE_ID },
+    { key: 'options', title: 'Options', tabId: OPTIONS_TAB_ID, pageId: OPTIONS_PAGE_ID }
   ];
 
   let mountScheduled = false;
@@ -101,24 +107,30 @@
     };
   }
 
-  function saveBindings() {
-    const clean = bindings
-      .filter(binding => Array.isArray(binding.virtualKeys) && binding.virtualKeys.length > 0)
-      .map(binding => ({
-        id: binding.id,
-        action: binding.action,
-        virtualKeys: binding.virtualKeys,
-        enabled: binding.enabled !== false
-      }));
-    post({ type: 'orbitcord-shortcuts-save', bindings: clean });
+  function setRecording(id) {
+    const bindingId = String(id || '');
+    if (!bindingId) return;
+    shortcutInputError = '';
+    recordingPreviewChord = '';
+    openActionPickerId = null;
+    if (recordingId === bindingId) {
+      post({ type: 'orbitcord-shortcut-recording-cancel' });
+    } else {
+      post({ type: 'orbitcord-shortcut-recording-begin', id: bindingId });
+    }
   }
 
-  function setRecording(id) {
-    if (recordingId === id) return;
-    recordingId = id;
-    openActionPickerId = null;
-    post({ type: 'orbitcord-shortcut-recording', active: id != null });
-    renderShortcutPage();
+  function cancelRecording() {
+    if (!recordingId) return;
+    post({ type: 'orbitcord-shortcut-recording-cancel' });
+  }
+
+  function removeBinding(id) {
+    const bindingId = String(id || '');
+    if (!bindingId) return;
+    if (recordingId === bindingId) post({ type: 'orbitcord-shortcut-recording-cancel' });
+    if (openActionPickerId === bindingId) openActionPickerId = null;
+    post({ type: 'orbitcord-shortcut-delete', id: bindingId });
   }
 
   function create(tag, css, text) {
@@ -460,7 +472,7 @@
 
     activeEntryKey = entry.key;
     if (entry.key !== 'shortcut') {
-      if (recordingId) setRecording(null);
+      if (recordingId) cancelRecording();
       openActionPickerId = null;
     }
     updateTabAppearance();
@@ -468,6 +480,7 @@
 
     if (entry.key === 'shortcut') requestState();
     else if (entry.key === 'customisation') post({ type: 'orbitcord-customisation-request' });
+    else if (entry.key === 'options') post({ type: 'orbitcord-options-request' });
   }
 
   function activateShortcutPage() {
@@ -476,6 +489,10 @@
 
   function activateCustomisationPage() {
     activateSettingsEntry('customisation');
+  }
+
+  function activateOptionsPage() {
+    activateSettingsEntry('options');
   }
 
   function disconnectSettingsLifecycle() {
@@ -510,7 +527,7 @@
     removeIconContextMenu?.();
     activeEntryKey = null;
     openActionPickerId = null;
-    if (recordingId) setRecording(null);
+    if (recordingId) cancelRecording();
     restoreNativeContent();
     updateTabAppearance();
   }
@@ -615,6 +632,7 @@
 
     if (entry.key === 'shortcut') renderShortcutPage();
     else if (entry.key === 'customisation') renderCustomisationPage();
+    else if (entry.key === 'options') renderOptionsPage();
     page.dataset.orbitcordRendered = 'true';
   }
 
@@ -666,8 +684,7 @@
     const add = create('button', buttonStyle(true), 'Aggiungi');
     add.type = 'button';
     add.addEventListener('click', () => {
-      bindings.push({ id: makeId(), action: actions[0].id, virtualKeys: [], enabled: true, chord: '' });
-      renderShortcutPage();
+      post({ type: 'orbitcord-shortcut-create', action: actions[0]?.id || 'TOGGLE_MUTE' });
     });
     toolbar.append(add);
 
@@ -679,6 +696,15 @@
       fontSize: '13px'
     }, hookRunning ? 'Shortcut globali attive' : 'Shortcut globali non attive');
     page.append(hookStatus);
+
+    if (shortcutInputError) {
+      page.append(create('div', {
+        margin: '-8px 0 16px',
+        color: 'var(--text-danger, #f23f42)',
+        fontSize: '13px',
+        lineHeight: '18px'
+      }, shortcutInputError));
+    }
 
     if (lastShortcutStatus) {
       const actionName = actions.find(action => action.id === lastShortcutStatus.action)?.name || lastShortcutStatus.action || 'Azione';
@@ -801,12 +827,9 @@
           choice.addEventListener('click', event => {
             event?.preventDefault?.();
             event?.stopPropagation?.();
-            binding.action = action.id;
-            binding.chord = '';
             openActionPickerId = null;
             lastShortcutStatus = null;
-            if (binding.virtualKeys.length) saveBindings();
-            renderShortcutPage();
+            post({ type: 'orbitcord-shortcut-action', id: binding.id, action: action.id });
           });
           menu.append(choice);
         }
@@ -816,7 +839,7 @@
       const record = create('button', buttonStyle(false));
       record.type = 'button';
       record.textContent = recordingId === binding.id
-        ? 'Premi i tasti…'
+        ? (recordingPreviewChord || 'Premi i tasti… (clicca per annullare)')
         : (formatChord(binding) || 'Imposta tasti');
       if (recordingId === binding.id) {
         record.style.outline = '2px solid var(--brand-500, #5865f2)';
@@ -844,8 +867,7 @@
       enabled.type = 'checkbox';
       enabled.checked = binding.enabled !== false;
       enabled.addEventListener('change', () => {
-        binding.enabled = enabled.checked;
-        if (binding.virtualKeys.length) saveBindings();
+        post({ type: 'orbitcord-shortcut-enabled', id: binding.id, enabled: enabled.checked });
       });
       enabledLabel.append(enabled, document.createTextNode('Attiva'));
 
@@ -854,13 +876,7 @@
       remove.title = 'Rimuovi shortcut';
       remove.style.fontSize = '19px';
       remove.style.padding = '4px 11px';
-      remove.addEventListener('click', () => {
-        if (recordingId === binding.id) setRecording(null);
-        if (openActionPickerId === binding.id) openActionPickerId = null;
-        bindings = bindings.filter(item => item.id !== binding.id);
-        saveBindings();
-        renderShortcutPage();
-      });
+      remove.addEventListener('click', () => removeBinding(binding.id));
 
       card.append(pickerWrap, record, testAction, enabledLabel, remove);
       page.append(card);
@@ -944,6 +960,48 @@
     return { backdrop, panel };
   }
 
+
+  function renderOptionsPage() {
+    const page = document.getElementById(OPTIONS_PAGE_ID);
+    if (!page) return;
+    page.replaceChildren();
+
+    const title = create('h2', {
+      margin: '0 0 8px', color: 'var(--header-primary, #f2f3f5)', fontSize: '24px', lineHeight: '30px', fontWeight: '700'
+    }, 'Options');
+    const intro = create('div', {
+      marginBottom: '24px', color: 'var(--text-muted, #949ba4)', fontSize: '14px', lineHeight: '20px'
+    }, 'OrbitCord runtime and performance options.');
+
+    const row = create('div', {
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '20px',
+      maxWidth: '720px', padding: '16px', borderRadius: '8px',
+      background: 'var(--background-secondary, #2b2d31)'
+    });
+    const copy = create('div', { minWidth: '0' });
+    copy.append(
+      create('div', { color: 'var(--header-primary, #f2f3f5)', fontWeight: '600', marginBottom: '5px' }, 'Disable self stream preview'),
+      create('div', { color: 'var(--text-muted, #949ba4)', fontSize: '13px', lineHeight: '18px' },
+        'When you share your screen, OrbitCord stops rendering your own local preview while keeping the outgoing stream untouched.')
+    );
+
+    const toggleLabel = create('label', {
+      display: 'flex', alignItems: 'center', gap: '8px', flex: '0 0 auto',
+      color: 'var(--text-normal, #dbdee1)', fontSize: '13px', cursor: 'pointer'
+    });
+    const toggle = document.createElement('input');
+    toggle.type = 'checkbox';
+    toggle.id = 'orbitcord-option-disable-self-stream-preview';
+    toggle.checked = disableSelfStreamPreview;
+    toggle.addEventListener('change', () => {
+      disableSelfStreamPreview = !!toggle.checked;
+      post({ type: 'orbitcord-options-save', disableSelfStreamPreview });
+    });
+    toggleLabel.append(toggle, document.createTextNode(disableSelfStreamPreview ? 'On' : 'Off'));
+
+    row.append(copy, toggleLabel);
+    page.append(title, intro, row);
+  }
 
   function renderCustomisationPage() {
     removeIconContextMenu();
@@ -1096,78 +1154,27 @@
     }, 30);
   }
 
-  function codeToVk(code) {
-    if (/^Key[A-Z]$/.test(code)) return code.charCodeAt(3);
-    if (/^Digit[0-9]$/.test(code)) return code.charCodeAt(5);
-    if (/^F([1-9]|1[0-9]|2[0-4])$/.test(code)) return 0x6F + Number(code.slice(1));
-    if (/^Numpad[0-9]$/.test(code)) return 0x60 + Number(code.slice(6));
-    const map = {
-      Space: 0x20, Enter: 0x0D, NumpadEnter: 0x0D, Tab: 0x09, Backspace: 0x08, Escape: 0x1B,
-      ArrowLeft: 0x25, ArrowUp: 0x26, ArrowRight: 0x27, ArrowDown: 0x28,
-      Insert: 0x2D, Delete: 0x2E, Home: 0x24, End: 0x23, PageUp: 0x21, PageDown: 0x22,
-      CapsLock: 0x14, Pause: 0x13, PrintScreen: 0x2C, ScrollLock: 0x91, NumLock: 0x90,
-      Semicolon: 0xBA, Equal: 0xBB, Comma: 0xBC, Minus: 0xBD, Period: 0xBE, Slash: 0xBF,
-      Backquote: 0xC0, BracketLeft: 0xDB, Backslash: 0xDC, BracketRight: 0xDD, Quote: 0xDE
-    };
-    return map[code] || 0;
-  }
-
-  function sortChord(keys) {
-    const rank = vk => vk === 0x11 ? 0 : vk === 0x10 ? 1 : vk === 0x12 ? 2 : (vk === 0x5B || vk === 0x5C) ? 3 : 1000 + vk;
-    return [...new Set(keys)].sort((a, b) => rank(a) - rank(b));
-  }
-
-  function isModifierCode(code) {
-    return code === 'ControlLeft' || code === 'ControlRight' || code === 'ShiftLeft' || code === 'ShiftRight' ||
-      code === 'AltLeft' || code === 'AltRight' || code === 'MetaLeft' || code === 'MetaRight';
-  }
-
-  window.addEventListener('keydown', event => {
-    if (!recordingId) return;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    event.stopImmediatePropagation?.();
-
-    if (event.code === 'Escape') {
-      setRecording(null);
-      return;
-    }
-    if (isModifierCode(event.code)) return;
-
-    const vk = Number(event.keyCode || event.which || codeToVk(event.code));
-    if (!vk) return;
-
-    const chord = [];
-    if (event.ctrlKey) chord.push(0x11);
-    if (event.shiftKey) chord.push(0x10);
-    if (event.altKey) chord.push(0x12);
-    if (event.metaKey) chord.push(0x5B);
-    chord.push(vk);
-
-    const binding = bindings.find(item => item.id === recordingId);
-    if (!binding) {
-      setRecording(null);
-      return;
-    }
-
-    binding.virtualKeys = sortChord(chord);
-    binding.chord = binding.virtualKeys.map(formatKey).join(' + ');
-    recordingId = null;
-    post({ type: 'orbitcord-shortcut-recording', active: false });
-    saveBindings();
-    renderShortcutPage();
-  }, true);
-
-  window.addEventListener('keyup', event => {
-    if (!recordingId) return;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    event.stopImmediatePropagation?.();
-  }, true);
-
   webview.addEventListener('message', event => {
     const data = event?.data;
     if (!data) return;
+    if (data.type === 'orbitcord-shortcut-recording-state') {
+      recordingId = data.active === true ? String(data.id || '') || null : null;
+      if (!recordingId) recordingPreviewChord = '';
+      if (activeEntryKey === 'shortcut') renderShortcutPage();
+      return;
+    }
+    if (data.type === 'orbitcord-shortcut-recording-preview') {
+      if (String(data.id || '') === String(recordingId || '')) {
+        recordingPreviewChord = String(data.chord || '');
+        if (activeEntryKey === 'shortcut') renderShortcutPage();
+      }
+      return;
+    }
+    if (data.type === 'orbitcord-options-state') {
+      disableSelfStreamPreview = data.disableSelfStreamPreview === true;
+      if (activeEntryKey === 'options') renderOptionsPage();
+      return;
+    }
     if (data.type === 'orbitcord-customisation-state') {
       selectedIcon = String(data.selectedIcon || 'purple');
       customIconDataUrl = String(data.customIconDataUrl || '');
@@ -1191,6 +1198,10 @@
       return;
     }
     if (data.type !== 'orbitcord-shortcuts-state') return;
+    const parsedRevision = Number(data.revision);
+    const incomingRevision = Number.isFinite(parsedRevision) ? parsedRevision : shortcutRevision + 1;
+    if (incomingRevision < shortcutRevision) return;
+    shortcutRevision = incomingRevision;
     hookRunning = data.hookRunning === true;
     const hostActions = Array.isArray(data.actions) ? data.actions.map(item => ({
       id: String(item.id || ''),
@@ -1200,15 +1211,9 @@
     })).filter(item => item.id && CORE_ACTION_IDS.has(item.id)) : [];
     if (hostActions.length) actions = hostActions;
 
-    const drafts = bindings.filter(binding => !binding.virtualKeys?.length);
-    const rawHostBindings = Array.isArray(data.bindings) ? data.bindings.map(cloneBinding) : [];
-    const hostBindings = rawHostBindings.filter(binding => CORE_ACTION_IDS.has(binding.action));
-    const hostIds = new Set(hostBindings.map(binding => binding.id));
-    bindings = [...hostBindings, ...drafts.filter(binding => !hostIds.has(binding.id))];
-    if (!cleanedLegacyBindings && rawHostBindings.length !== hostBindings.length) {
-      cleanedLegacyBindings = true;
-      saveBindings();
-    }
+    bindings = (Array.isArray(data.bindings) ? data.bindings : [])
+      .map(cloneBinding)
+      .filter(binding => CORE_ACTION_IDS.has(binding.action));
     renderShortcutPage();
   });
 
@@ -1324,15 +1329,22 @@
   }
 
   window.addEventListener('pagehide', () => {
-    if (recordingId) post({ type: 'orbitcord-shortcut-recording', active: false });
+    if (recordingId) post({ type: 'orbitcord-shortcut-recording-cancel' });
     recordingId = null;
+    recordingPreviewChord = '';
   });
 
   window.__orbitcordSettingsTest = {
     mount,
     activate: activateShortcutPage,
     deactivate: deactivateOrbitPage,
-    activateCustomisation: activateCustomisationPage
+    activateCustomisation: activateCustomisationPage,
+    // Narrow test hooks: keep regression coverage on the recording/host-sync
+    // state machine without exposing any user-facing runtime API.
+    startRecordingForTest: id => setRecording(id),
+    cancelRecordingForTest: () => cancelRecording(),
+    removeBindingForTest: id => removeBinding(id),
+    getBindingsForTest: () => bindings.map(cloneBinding)
   };
 
   if (document.body) boot();

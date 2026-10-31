@@ -27,6 +27,7 @@ const context = vm.createContext({ window: windowObj, chrome: windowObj.chrome, 
 vm.runInContext(source, context);
 await new Promise(r => setTimeout(r, 20));
 listeners.forEach(cb => cb({ data: { type: 'orbitcord-shortcut-execute', action: 'TOGGLE_DEAFEN', pressed: true } }));
+await new Promise(resolve => setTimeout(resolve, 10));
 
 assert.equal(orbitcordClicks, 0, 'shortcut execution must never click OrbitCord controls that happen to say Deafen');
 assert.ok(calls.some(x => x[0] === 'deafen'), 'real Discord audio action should be used instead');

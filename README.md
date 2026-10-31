@@ -127,13 +127,13 @@ Do not manually build ZIP files or setup executables and upload them to GitHub.
 Use:
 
 ```powershell
-.\PUBLISH-UPDATE.ps1 -Version 1.0.2
+.\PUBLISH-UPDATE.ps1 -Version 1.1.1
 ```
 
 Or a prerelease:
 
 ```powershell
-.\PUBLISH-UPDATE.ps1 -Version 1.0.2-beta.1
+.\PUBLISH-UPDATE.ps1 -Version 1.1.1-beta.1
 ```
 
 The command:

@@ -12,28 +12,22 @@ const store = fs.readFileSync(path.join(root, 'src/OrbitCord.App/ShortcutStore.c
 const service = fs.readFileSync(path.join(root, 'src/OrbitCord.App/NativeShortcutService.cs'), 'utf8');
 
 for (const token of [
-  'keys.All(IsModifier)',
-  'vk is >= 0x41 and <= 0x5A',
-  'vk is >= 0x30 and <= 0x39',
-  'NativeKeyCode.Control',
-  'NativeKeyCode.Alt',
-  'NativeKeyCode.LeftWindows',
-  'NativeKeyCode.RightWindows',
+  'IsAllowed',
+  'keys.All(NativeKeyCode.IsModifier)',
 ]) {
-  if (!policy.includes(token)) throw new Error(`shortcut safety policy missing ${token}`);
+  if (!policy.includes(token)) throw new Error(`shortcut validation policy missing ${token}`);
 }
 
-const safeChordSection = policy.slice(policy.indexOf('return keys.Any(vk =>'), policy.indexOf('private static bool IsModifier'));
-if (safeChordSection.includes('NativeKeyCode.Shift')) {
-  throw new Error('Shift alone must not make a printable shortcut safe');
+if (!store.includes('ShortcutBindingPolicy.IsAllowed(keys)')) {
+  throw new Error('ShortcutStore must keep all valid non-modifier-only user chords');
 }
 
-if (!store.includes('ShortcutBindingPolicy.IsSafe(keys)')) {
-  throw new Error('ShortcutStore must discard unsafe persisted bindings');
+if (!service.includes('ShortcutBindingPolicy.IsAllowed(x.VirtualKeys)')) {
+  throw new Error('NativeShortcutService must accept flexible user chords');
 }
 
-if (!service.includes('ShortcutBindingPolicy.IsSafe(x.VirtualKeys)')) {
-  throw new Error('NativeShortcutService must reject unsafe bindings as defense in depth');
+if (service.includes('CanTriggerInForeground(binding.VirtualKeys)')) {
+  throw new Error('valid saved shortcuts must not be silently disabled while OrbitCord is foreground');
 }
 
 console.log('shortcut-text-input-safety: PASS');

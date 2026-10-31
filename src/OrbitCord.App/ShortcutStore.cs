@@ -58,7 +58,7 @@ public sealed class ShortcutStore
                 .ToList();
 
             if (keys.Count == 0) continue;
-            if (!ShortcutBindingPolicy.IsSafe(keys)) continue;
+            if (!ShortcutBindingPolicy.IsAllowed(keys)) continue;
             if (!ShortcutCatalog.All.Any(x => x.Action == source.Action)) continue;
 
             result.Add(new ShortcutBinding

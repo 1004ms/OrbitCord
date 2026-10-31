@@ -210,19 +210,20 @@ assert.ok(posted.some(m => m?.type === 'orbitcord-shortcuts-request'), 'page mus
 const immediateAdd = findButtonByText(page, 'Aggiungi');
 assert.ok(immediateAdd, 'Shortcut page must expose Add immediately');
 immediateAdd.dispatch('click');
-assert.ok(findButtonByText(page, 'Imposta tasti'), 'Add must create a shortcut row even before native state replies');
+assert.ok(posted.some(m => m?.type === 'orbitcord-shortcut-create'), 'Add must ask the native host to create the shortcut');
 
 for (const cb of webviewListeners) cb({ data: {
   type: 'orbitcord-shortcuts-state',
+  revision: 1,
   hookRunning: true,
   actions: [
     { id: 'TOGGLE_MUTE', name: 'Mute microfono', description: 'mute', isHold: false },
     { id: 'TOGGLE_DEAFEN', name: 'Deafen', description: 'deafen', isHold: false }
   ],
-  bindings: []
+  bindings: [{ id: 'draft-id', action: 'TOGGLE_MUTE', virtualKeys: [], enabled: true, chord: '' }]
 }});
 
-assert.ok(findButtonByText(page, 'Imposta tasti'), 'native state must not erase an unsaved shortcut draft');
+assert.ok(findButtonByText(page, 'Imposta tasti'), 'native-created shortcut draft must render');
 assert.doesNotMatch(page.textContent, /Hook globale Windows/i, 'UI copy must stay simple');
 
 const actionPicker = findButtonByText(page, 'Mute microfono');
@@ -231,7 +232,16 @@ actionPicker.dispatch('click');
 const deafenChoice = findButtonByText(page, 'Deafen');
 assert.ok(deafenChoice, 'action picker must show the other available actions');
 deafenChoice.dispatch('click');
-assert.ok(findButtonByText(page, 'Deafen'), 'choosing an action must update the shortcut row');
+assert.ok(posted.some(m => m?.type === 'orbitcord-shortcut-action' && m.id === 'draft-id' && m.action === 'TOGGLE_DEAFEN'), 'action changes must be native commands');
+for (const cb of webviewListeners) cb({ data: {
+  type: 'orbitcord-shortcuts-state', revision: 2, hookRunning: true,
+  actions: [
+    { id: 'TOGGLE_MUTE', name: 'Mute microfono', description: 'mute', isHold: false },
+    { id: 'TOGGLE_DEAFEN', name: 'Deafen', description: 'deafen', isHold: false }
+  ],
+  bindings: [{ id: 'draft-id', action: 'TOGGLE_DEAFEN', virtualKeys: [], enabled: true, chord: '' }]
+}});
+assert.ok(findButtonByText(page, 'Deafen'), 'canonical native state must update the action');
 assert.equal(page.querySelectorAll('select').length, 0, 'shortcut action picker must not rely on native HTML select');
 
 const testAction = findButtonByText(page, 'Prova');
@@ -244,19 +254,20 @@ assert.ok(addButton, 'custom page must allow adding shortcuts');
 const recordButton = findButtonByText(page, 'Imposta tasti');
 assert.ok(recordButton, 'new shortcut must expose chord recording');
 recordButton.dispatch('click');
-assert.ok(posted.some(m => m?.type === 'orbitcord-shortcut-recording' && m.active === true), 'recording must suspend native shortcut hook');
-
-const keydown = (windowListeners.get('keydown') || [])[0];
-assert.ok(keydown, 'recording keydown capture handler must exist');
-keydown({
-  code: 'KeyK', keyCode: 0x4B, which: 0x4B,
-  ctrlKey: true, shiftKey: true, altKey: false, metaKey: false,
-  preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {}
-});
-const save = [...posted].reverse().find(m => m?.type === 'orbitcord-shortcuts-save');
-assert.ok(save, 'recorded chord must be persisted through the native host');
-assert.ok(save.bindings.some(b => b.action === 'TOGGLE_DEAFEN' && JSON.stringify(b.virtualKeys) === JSON.stringify([0x11, 0x10, 0x4B])), 'selected Deafen action and Ctrl+Shift+K must be persisted together');
-assert.ok(posted.some(m => m?.type === 'orbitcord-shortcut-recording' && m.active === false), 'recording must resume native hook');
+assert.ok(posted.some(m => m?.type === 'orbitcord-shortcut-recording-begin' && m.id === 'draft-id'), 'recording must start in the native hook');
+for (const cb of webviewListeners) cb({ data: { type: 'orbitcord-shortcut-recording-state', active: true, id: 'draft-id' } });
+for (const cb of webviewListeners) cb({ data: { type: 'orbitcord-shortcut-recording-preview', id: 'draft-id', virtualKeys: [0x11, 0x10, 0x4B], chord: 'Ctrl + Shift + K' } });
+for (const cb of webviewListeners) cb({ data: { type: 'orbitcord-shortcut-recording-state', active: false, id: null } });
+for (const cb of webviewListeners) cb({ data: {
+  type: 'orbitcord-shortcuts-state', revision: 3, hookRunning: true,
+  actions: [
+    { id: 'TOGGLE_MUTE', name: 'Mute microfono', description: 'mute', isHold: false },
+    { id: 'TOGGLE_DEAFEN', name: 'Deafen', description: 'deafen', isHold: false }
+  ],
+  bindings: [{ id: 'draft-id', action: 'TOGGLE_DEAFEN', virtualKeys: [0x11, 0x10, 0x4B], enabled: true, chord: 'Ctrl + Shift + K' }]
+}});
+assert.deepEqual(Array.from(windowObj.__orbitcordSettingsTest.getBindingsForTest()[0].virtualKeys), [0x11, 0x10, 0x4B], 'native completion must persist Ctrl+Shift+K');
+assert.equal((windowListeners.get('keydown') || []).length, 0, 'WebView must not capture shortcut keydown');
 
 nativeTab.dispatch('click');
 assert.equal(document.getElementById('orbitcord-shortcut-page'), null, 'clicking a normal Discord settings tab must leave OrbitCord Shortcut page');
