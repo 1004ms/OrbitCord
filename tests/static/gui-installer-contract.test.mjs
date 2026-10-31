@@ -65,7 +65,7 @@ for (const token of [
   'UpdateButton_OnClick',
   'UninstallButton_OnClick',
   'IsCurrentVersionInstalled',
-  'DesktopShortcutExists',
+  'HasDesktopShortcut',
 ]) requireText(windowCode, token, 'installer window behavior');
 
 const engine = read('src/OrbitCord.Installer/InstallerEngine.cs');

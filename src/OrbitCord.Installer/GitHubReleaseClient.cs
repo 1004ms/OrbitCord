@@ -1,9 +1,9 @@
+using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.IO;
-using System.Net.Http;
 
 namespace OrbitCord.Installer;
 
@@ -23,11 +23,24 @@ internal sealed class GitHubReleaseClient : IDisposable
         _httpClient.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
     }
 
-    public async Task<ReleaseDescriptor> GetExactReleaseAsync(string version, CancellationToken cancellationToken)
+    public Task<ReleaseDescriptor> GetLatestReleaseAsync(CancellationToken cancellationToken)
+    {
+        var uri = $"https://api.github.com/repos/{InstallerBuildInfo.Repository}/releases/latest";
+        return GetReleaseAsync(uri, "latest", cancellationToken);
+    }
+
+    public Task<ReleaseDescriptor> GetExactReleaseAsync(string version, CancellationToken cancellationToken)
     {
         var tag = version.StartsWith('v') ? version : $"v{version}";
         var uri = $"https://api.github.com/repos/{InstallerBuildInfo.Repository}/releases/tags/{Uri.EscapeDataString(tag)}";
+        return GetReleaseAsync(uri, tag, cancellationToken);
+    }
 
+    private async Task<ReleaseDescriptor> GetReleaseAsync(
+        string uri,
+        string fallbackTag,
+        CancellationToken cancellationToken)
+    {
         using var response = await _httpClient.GetAsync(uri, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
@@ -42,7 +55,7 @@ internal sealed class GitHubReleaseClient : IDisposable
                 asset => new ReleaseAsset(asset.Name!, new Uri(asset.BrowserDownloadUrl!, UriKind.Absolute)),
                 StringComparer.OrdinalIgnoreCase);
 
-        return new ReleaseDescriptor(dto.TagName ?? tag, assets);
+        return new ReleaseDescriptor(dto.TagName ?? fallbackTag, assets);
     }
 
     public async Task DownloadFileAsync(

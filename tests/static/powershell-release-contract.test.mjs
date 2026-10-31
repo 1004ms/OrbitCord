@@ -34,6 +34,9 @@ if (publish.indexOf(tagProbe) > publish.indexOf(setVersion)) {
 if (!publish.includes('System.Text.UTF8Encoding($false)')) {
   throw new Error('publisher rollback must restore Directory.Build.props as UTF-8 without BOM');
 }
+if (!publish.includes('git diff --cached --quiet')) {
+  throw new Error('publisher must tolerate an already-set release version instead of failing on an empty release commit');
+}
 
 const testScript = fs.readFileSync(path.join(root, 'scripts/Test-OrbitCord.ps1'), 'utf8');
 for (const needle of ['dotnet test', 'node']) {

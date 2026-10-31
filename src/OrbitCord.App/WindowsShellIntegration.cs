@@ -1,6 +1,7 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace OrbitCord.App;
@@ -8,8 +9,9 @@ namespace OrbitCord.App;
 internal static class WindowsShellIntegration
 {
     private const string AppUserModelId = "OrbitCord.Desktop";
-    private const uint ShcneAssocChanged = 0x08000000;
-    private const uint ShcnfIdList = 0x0000;
+    private const uint ShcneRenameItem = 0x00000001;
+    private const uint ShcneUpdateItem = 0x00002000;
+    private const uint ShcnfPathW = 0x0005;
     private const uint GpsReadWrite = 0x00000002;
     private static readonly PropertyKey PkeyAppUserModelId = new(
         new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"),
@@ -56,8 +58,8 @@ internal static class WindowsShellIntegration
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern int SetCurrentProcessExplicitAppUserModelID(string appID);
 
-    [DllImport("shell32.dll")]
-    private static extern void SHChangeNotify(uint wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern void SHChangeNotify(uint wEventId, uint uFlags, string? dwItem1, string? dwItem2);
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
     private static extern void SHGetPropertyStoreFromParsingName(
@@ -118,7 +120,6 @@ internal static class WindowsShellIntegration
                 ReleaseComObject(shellObject);
             }
 
-            SHChangeNotify(ShcneAssocChanged, ShcnfIdList, IntPtr.Zero, IntPtr.Zero);
             logger?.Write($"Windows shell appearance synchronized as '{displayName}'.");
         }
         catch (Exception ex)
@@ -152,6 +153,7 @@ internal static class WindowsShellIntegration
                 shortcut.Description = displayName;
                 shortcut.Save();
                 matched = true;
+                NotifyShortcutUpdated(shortcutPath);
             }
             catch
             {
@@ -168,32 +170,74 @@ internal static class WindowsShellIntegration
             if (renameShortcut)
             {
                 var desiredPath = Path.Combine(folder, SanitizeShortcutFileName(displayName) + ".lnk");
-                if (!PathsEqual(shortcutPath, desiredPath))
-                {
-                    try
-                    {
-                        if (File.Exists(desiredPath))
-                        {
-                            if (!ShortcutTargetsExecutable(shell, desiredPath, executablePath)) continue;
-                            File.Delete(desiredPath);
-                        }
-
-                        File.Move(shortcutPath, desiredPath);
-                        finalShortcutPath = desiredPath;
-                    }
-                    catch
-                    {
-                        finalShortcutPath = shortcutPath;
-                    }
-                }
+                finalShortcutPath = TryRenameShortcut(shell, shortcutPath, desiredPath, executablePath);
             }
 
             ApplyShortcutAppId(finalShortcutPath);
+            NotifyShortcutUpdated(finalShortcutPath);
         }
+    }
+
+    private static string TryRenameShortcut(dynamic shell, string shortcutPath, string desiredPath, string executablePath)
+    {
+        if (PathsEqual(shortcutPath, desiredPath)) return shortcutPath;
+
+        try
+        {
+            if (File.Exists(desiredPath))
+            {
+                if (!ShortcutTargetsExecutable(shell, desiredPath, executablePath))
+                    return shortcutPath;
+
+                File.Delete(desiredPath);
+            }
+
+            File.Move(shortcutPath, desiredPath);
+
+            if (!File.Exists(desiredPath) || !ShortcutTargetsExecutable(shell, desiredPath, executablePath))
+            {
+                try
+                {
+                    if (File.Exists(desiredPath) && !File.Exists(shortcutPath))
+                        File.Move(desiredPath, shortcutPath);
+                }
+                catch { }
+
+                return shortcutPath;
+            }
+
+            NotifyShortcutRenamed(shortcutPath, desiredPath);
+            return desiredPath;
+        }
+        catch
+        {
+            return File.Exists(shortcutPath) ? shortcutPath : desiredPath;
+        }
+    }
+
+    private static void NotifyShortcutUpdated(string shortcutPath)
+    {
+        try
+        {
+            if (File.Exists(shortcutPath))
+                SHChangeNotify(ShcneUpdateItem, ShcnfPathW, shortcutPath, null);
+        }
+        catch { }
+    }
+
+    private static void NotifyShortcutRenamed(string oldPath, string newPath)
+    {
+        try
+        {
+            SHChangeNotify(ShcneRenameItem, ShcnfPathW, oldPath, newPath);
+        }
+        catch { }
     }
 
     private static void ApplyShortcutAppId(string shortcutPath)
     {
+        if (!File.Exists(shortcutPath)) return;
+
         IPropertyStore? store = null;
         var value = default(PropVariant);
         try
@@ -244,17 +288,15 @@ internal static class WindowsShellIntegration
 
     private static string MaterializeShellIcon(string pngIconPath)
     {
-        var pngBytes = File.ReadAllBytes(pngIconPath);
-        using var imageStream = new MemoryStream(pngBytes, writable: false);
-        var decoder = BitmapDecoder.Create(imageStream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-        var frame = decoder.Frames.FirstOrDefault() ?? throw new InvalidDataException("Selected icon has no image frame.");
+        var sourcePngBytes = File.ReadAllBytes(pngIconPath);
+        var normalized = NormalizePngForShell(sourcePngBytes);
 
-        var hash = Convert.ToHexString(SHA256.HashData(pngBytes)).Substring(0, 16).ToLowerInvariant();
+        var hash = Convert.ToHexString(SHA256.HashData(sourcePngBytes)).Substring(0, 16).ToLowerInvariant();
         var iconDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "OrbitCord", "Customization", "ShellIcons");
         Directory.CreateDirectory(iconDirectory);
-        var iconPath = Path.Combine(iconDirectory, $"shell-{hash}.ico");
+        var iconPath = Path.Combine(iconDirectory, $"shell-v2-{hash}.ico");
 
         if (!File.Exists(iconPath))
         {
@@ -263,15 +305,15 @@ internal static class WindowsShellIntegration
             writer.Write((ushort)0); // ICONDIR.reserved
             writer.Write((ushort)1); // ICONDIR.type = icon
             writer.Write((ushort)1); // ICONDIR.count
-            writer.Write((byte)(frame.PixelWidth >= 256 ? 0 : frame.PixelWidth));
-            writer.Write((byte)(frame.PixelHeight >= 256 ? 0 : frame.PixelHeight));
-            writer.Write((byte)0);   // palette size
-            writer.Write((byte)0);   // reserved
-            writer.Write((ushort)1); // planes
-            writer.Write((ushort)32);// bpp
-            writer.Write((uint)pngBytes.Length);
-            writer.Write((uint)22);  // image offset: 6 byte header + 16 byte entry
-            writer.Write(pngBytes);  // Vista+ supports PNG-compressed ICO entries.
+            writer.Write((byte)(normalized.Width >= 256 ? 0 : normalized.Width));
+            writer.Write((byte)(normalized.Height >= 256 ? 0 : normalized.Height));
+            writer.Write((byte)0);    // palette size
+            writer.Write((byte)0);    // reserved
+            writer.Write((ushort)1);  // planes
+            writer.Write((ushort)32); // bpp
+            writer.Write((uint)normalized.Bytes.Length);
+            writer.Write((uint)22);   // image offset: 6 byte header + 16 byte entry
+            writer.Write(normalized.Bytes);
         }
 
         foreach (var stale in Directory.EnumerateFiles(iconDirectory, "shell-*.ico", SearchOption.TopDirectoryOnly))
@@ -286,6 +328,28 @@ internal static class WindowsShellIntegration
         }
 
         return iconPath;
+    }
+
+    private static (byte[] Bytes, int Width, int Height) NormalizePngForShell(byte[] pngBytes)
+    {
+        using var imageStream = new MemoryStream(pngBytes, writable: false);
+        var decoder = BitmapDecoder.Create(imageStream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        BitmapSource source = decoder.Frames.FirstOrDefault()
+                              ?? throw new InvalidDataException("Selected icon has no image frame.");
+
+        if (source.PixelWidth > 256 || source.PixelHeight > 256)
+        {
+            var scale = Math.Min(256d / source.PixelWidth, 256d / source.PixelHeight);
+            var scaled = new TransformedBitmap(source, new ScaleTransform(scale, scale));
+            scaled.Freeze();
+            source = scaled;
+        }
+
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(source));
+        using var output = new MemoryStream();
+        encoder.Save(output);
+        return (output.ToArray(), source.PixelWidth, source.PixelHeight);
     }
 
     private static string SanitizeShortcutFileName(string displayName)

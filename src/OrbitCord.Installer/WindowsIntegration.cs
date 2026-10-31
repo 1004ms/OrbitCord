@@ -48,6 +48,12 @@ internal sealed class WindowsIntegration
         CreateShortcut(Path.Combine(programs, "OrbitCord.lnk"), executablePath);
     }
 
+    public bool HasDesktopShortcut(string executablePath)
+    {
+        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        return FindShortcutTargeting(desktop, executablePath) is not null;
+    }
+
     public void SetDesktopShortcut(string executablePath, bool enabled)
     {
         var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);

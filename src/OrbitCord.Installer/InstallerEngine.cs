@@ -25,6 +25,12 @@ internal sealed class InstallerEngine : IDisposable
         return _windows.GetInstalledApplication() ?? ReadLegacyInstallMarker();
     }
 
+    public Task<ReleaseDescriptor> GetLatestReleaseAsync(CancellationToken cancellationToken) =>
+        _releaseClient.GetLatestReleaseAsync(cancellationToken);
+
+    public bool HasDesktopShortcut(string executablePath) =>
+        _windows.HasDesktopShortcut(executablePath);
+
     private static InstalledApplicationInfo? ReadLegacyInstallMarker()
     {
         var installDirectory = DefaultInstallDirectory;
@@ -57,8 +63,8 @@ internal sealed class InstallerEngine : IDisposable
         ValidateExistingDirectory(installDirectory);
         EnsureParentWritable(installDirectory);
 
-        progress?.Report(new InstallerProgress($"Finding OrbitCord {InstallerBuildInfo.Version}...", 2));
-        var release = await _releaseClient.GetExactReleaseAsync(InstallerBuildInfo.Version, cancellationToken);
+        progress?.Report(new InstallerProgress("Finding latest OrbitCord release...", 2));
+        var release = await _releaseClient.GetLatestReleaseAsync(cancellationToken);
         if (!release.Assets.TryGetValue(ZipAssetName, out var zipAsset) ||
             !release.Assets.TryGetValue(HashAssetName, out var hashAsset))
         {
@@ -115,13 +121,13 @@ internal sealed class InstallerEngine : IDisposable
             CopyCurrentSetup(installedSetup);
             await File.WriteAllTextAsync(
                 Path.Combine(installDirectory, ".orbitcord-version"),
-                InstallerBuildInfo.Version,
+                release.Version,
                 cancellationToken);
 
             progress?.Report(new InstallerProgress("Creating Windows shortcuts...", 88));
             _windows.CreateStartMenuShortcut(installedExe);
             _windows.SetDesktopShortcut(installedExe, options.CreateDesktopShortcut);
-            _windows.RegisterUninstallEntry(installDirectory, InstallerBuildInfo.Version, installedSetup, installedExe);
+            _windows.RegisterUninstallEntry(installDirectory, release.Version, installedSetup, installedExe);
 
             if (movedExistingInstall && Directory.Exists(backup))
                 Directory.Delete(backup, recursive: true);

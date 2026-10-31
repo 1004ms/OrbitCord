@@ -78,8 +78,14 @@ catch {
 
 & git add Directory.Build.props
 $commitMessage = if ($Message) { $Message } else { "release: $tag" }
-& git commit -m $commitMessage
-if ($LASTEXITCODE -ne 0) { throw 'Release commit failed.' }
+& git diff --cached --quiet -- Directory.Build.props
+$versionAlreadyCommitted = $LASTEXITCODE -eq 0
+if ($versionAlreadyCommitted) {
+    Write-Host "Version $Version is already committed; continuing without an empty release commit." -ForegroundColor DarkGray
+} else {
+    & git commit -m $commitMessage
+    if ($LASTEXITCODE -ne 0) { throw 'Release commit failed.' }
+}
 
 & git tag -a $tag -m "OrbitCord $Version"
 if ($LASTEXITCODE -ne 0) { throw 'Tag creation failed.' }

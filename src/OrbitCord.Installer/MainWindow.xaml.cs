@@ -11,9 +11,11 @@ public partial class MainWindow : Window
     private readonly InstallerEngine _engine;
     private readonly bool _uninstallOnly;
     private InstalledApplicationInfo? _installed;
+    private ReleaseDescriptor? _latestRelease;
     private CancellationTokenSource? _operationCts;
     private bool _busy;
     private bool _optionsExpanded;
+    private bool _checkingLatestRelease;
 
     public MainWindow(bool uninstallOnly)
     {
@@ -30,15 +32,39 @@ public partial class MainWindow : Window
         };
     }
 
-    private void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
+    private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
     {
-        VersionText.Text = $"v{InstallerBuildInfo.Version}";
+        VersionText.Text = $"Setup v{InstallerBuildInfo.Version}";
         RefreshInstalledState();
 
         if (_uninstallOnly)
+        {
             ConfigureUninstallMode();
-        else
-            ConfigureNormalMode();
+            return;
+        }
+
+        ConfigureNormalMode();
+        await RefreshLatestReleaseAsync();
+        if (IsVisible) ConfigureNormalMode();
+    }
+
+    private async Task RefreshLatestReleaseAsync()
+    {
+        _checkingLatestRelease = true;
+        if (IsVisible && !_uninstallOnly) ConfigureNormalMode();
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+            _latestRelease = await _engine.GetLatestReleaseAsync(timeout.Token);
+        }
+        catch (Exception)
+        {
+            _latestRelease = null;
+        }
+        finally
+        {
+            _checkingLatestRelease = false;
+        }
     }
 
     private void RefreshInstalledState()
@@ -56,17 +82,36 @@ public partial class MainWindow : Window
             InstallPathBox.Text = InstallerEngine.DefaultInstallDirectory;
             InstallPathBox.IsReadOnly = false;
             DesktopShortcutCheckBox.IsChecked = false;
-            StatusText.Text = "Ready to install.";
+
+            StatusText.Text = _checkingLatestRelease
+                ? "Checking latest release..."
+                : _latestRelease is not null
+                    ? $"Ready to install OrbitCord {_latestRelease.Version}."
+                    : "Ready to install. Latest release will be checked before downloading.";
         }
         else
         {
             InstallPathBox.Text = _installed.InstallLocation;
             InstallPathBox.IsReadOnly = true;
-            DesktopShortcutCheckBox.IsChecked = DesktopShortcutExists();
+            var installedExe = Path.Combine(_installed.InstallLocation, "OrbitCord.exe");
+            DesktopShortcutCheckBox.IsChecked = _engine.HasDesktopShortcut(installedExe);
 
-            StatusText.Text = IsCurrentVersionInstalled()
-                ? $"OrbitCord {_installed.Version} is installed."
-                : $"Update {_installed.Version} → {InstallerBuildInfo.Version} available.";
+            if (_checkingLatestRelease)
+            {
+                StatusText.Text = $"OrbitCord {_installed.Version} is installed. Checking for updates...";
+            }
+            else if (_latestRelease is null)
+            {
+                StatusText.Text = $"OrbitCord {_installed.Version} is installed. Could not check GitHub for updates.";
+            }
+            else if (HasUpdateAvailable())
+            {
+                StatusText.Text = $"Update {_installed.Version} → {_latestRelease.Version} available.";
+            }
+            else
+            {
+                StatusText.Text = $"OrbitCord {_installed.Version} is up to date.";
+            }
         }
 
         ShowReadyState();
@@ -95,12 +140,25 @@ public partial class MainWindow : Window
 
     private bool IsCurrentVersionInstalled() =>
         _installed is not null &&
-        string.Equals(_installed.Version, InstallerBuildInfo.Version, StringComparison.OrdinalIgnoreCase);
+        _latestRelease is not null &&
+        CompareVersions(_installed.Version, _latestRelease.Version) >= 0;
 
-    private static bool DesktopShortcutExists()
+    private bool HasUpdateAvailable() =>
+        _installed is not null &&
+        _latestRelease is not null &&
+        CompareVersions(_installed.Version, _latestRelease.Version) < 0;
+
+    private static int CompareVersions(string left, string right)
     {
-        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-        return File.Exists(Path.Combine(desktop, "OrbitCord.lnk"));
+        var normalizedLeft = left.Trim().TrimStart('v', 'V');
+        var normalizedRight = right.Trim().TrimStart('v', 'V');
+        if (Version.TryParse(normalizedLeft, out var leftVersion) &&
+            Version.TryParse(normalizedRight, out var rightVersion))
+        {
+            return leftVersion.CompareTo(rightVersion);
+        }
+
+        return string.Compare(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase);
     }
 
     private void ShowReadyState()
@@ -115,7 +173,11 @@ public partial class MainWindow : Window
         var installed = _installed is not null;
         InstallButton.Visibility = installed ? Visibility.Collapsed : Visibility.Visible;
         UpdateButton.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
-        UpdateButton.Content = IsCurrentVersionInstalled() ? "Up to date" : "Update";
+        UpdateButton.Content = _checkingLatestRelease
+            ? "Checking..."
+            : _latestRelease is null
+                ? "Check for updates"
+                : IsCurrentVersionInstalled() ? "Up to date" : "Update";
 
         InstallOptionsOverlay.Visibility = _optionsExpanded ? Visibility.Visible : Visibility.Collapsed;
         UninstallButton.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
@@ -132,10 +194,11 @@ public partial class MainWindow : Window
         ProgressStatusText.Text = "Preparing...";
 
         var updating = _installed is not null;
+        var targetVersion = _latestRelease?.Version;
         OperationTitleText.Text = updating ? "Updating OrbitCord..." : "Installing OrbitCord...";
-        OperationSubtitleText.Text = updating
-            ? $"Downloading and applying v{InstallerBuildInfo.Version}."
-            : "Setting up the best Discord experience for you.";
+        OperationSubtitleText.Text = targetVersion is not null
+            ? $"Downloading and applying v{targetVersion}."
+            : "Downloading the latest OrbitCord release from GitHub.";
     }
 
     private void ShowSuccessState()
@@ -187,7 +250,16 @@ public partial class MainWindow : Window
 
     private async void UpdateButton_OnClick(object sender, RoutedEventArgs e)
     {
-        if (_busy || _installed is null || IsCurrentVersionInstalled() || _uninstallOnly) return;
+        if (_busy || _installed is null || _uninstallOnly) return;
+
+        if (_latestRelease is null)
+        {
+            await RefreshLatestReleaseAsync();
+            if (IsVisible) ConfigureNormalMode();
+            if (_latestRelease is null || IsCurrentVersionInstalled()) return;
+        }
+
+        if (!HasUpdateAvailable()) return;
         await RunInstallAsync();
     }
 
@@ -324,7 +396,8 @@ public partial class MainWindow : Window
         var currentVersion = IsCurrentVersionInstalled();
 
         InstallButton.IsEnabled = !_busy && !_uninstallOnly && !installed;
-        UpdateButton.IsEnabled = !_busy && !_uninstallOnly && installed && !currentVersion;
+        UpdateButton.IsEnabled = !_busy && !_uninstallOnly && installed && !_checkingLatestRelease &&
+                                 (_latestRelease is null || !currentVersion);
         UninstallButton.IsEnabled = !_busy && installed;
 
         BrowseButton.IsEnabled = !_busy && !_uninstallOnly && !installed;
