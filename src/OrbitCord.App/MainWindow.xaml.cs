@@ -60,6 +60,7 @@ public partial class MainWindow : Window
         {
             NativeWindowStyling.ApplyOrbitCordTitleBar(this);
             ApplySelectedAppName();
+            ApplySelectedWindowIcon();
             ApplyShellAppearance();
             StartNativeShortcuts();
         };
@@ -731,6 +732,7 @@ public partial class MainWindow : Window
             {
                 _iconCustomizationStore.SaveCustomAppName(dialog.AppName);
                 ApplySelectedAppName();
+                ApplySelectedWindowIcon();
                 ApplyShellAppearance();
                 _logger.Write($"OrbitCord app display name changed to {_iconCustomizationStore.DisplayAppName}.");
             }
@@ -756,8 +758,12 @@ public partial class MainWindow : Window
             bitmap.StreamSource = stream;
             bitmap.EndInit();
             bitmap.Freeze();
-            Icon = null;
             Icon = bitmap;
+            WindowsShellIntegration.ApplyWindowAppearance(
+                this,
+                _iconCustomizationStore.DisplayAppName,
+                path,
+                _logger);
         }
         catch (Exception ex)
         {

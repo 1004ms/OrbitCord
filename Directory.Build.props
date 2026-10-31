@@ -1,9 +1,9 @@
 <Project>
   <PropertyGroup>
-    <OrbitCordVersion>1.1.2</OrbitCordVersion>
+    <OrbitCordVersion>1.1.3</OrbitCordVersion>
     <Version>$(OrbitCordVersion)</Version>
-    <FileVersion>1.1.2.0</FileVersion>
-    <AssemblyVersion>1.1.2.0</AssemblyVersion>
+    <FileVersion>1.1.3.0</FileVersion>
+    <AssemblyVersion>1.1.3.0</AssemblyVersion>
     <RepositoryUrl>https://github.com/1004ms/OrbitCord</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>

@@ -18,13 +18,13 @@ assert.match(shell, /NotifyShortcutUpdated/,
   'shortcut icon changes need a targeted update helper');
 assert.match(shell, /NotifyShortcutRenamed/,
   'shortcut rename needs a targeted rename helper');
-assert.match(shell, /shell-v2-/,
-  'new icon materialization must use a new cache generation so Windows cannot reuse broken old ICO cache entries');
+assert.match(shell, /shell-v3-/,
+  'new icon materialization must use the current cache generation so Windows cannot reuse broken old ICO cache entries');
 assert.match(shell, /PngBitmapEncoder/,
   'custom PNGs must be normalized before being embedded into ICO');
-assert.match(shell, /ScaleTransform/,
-  'oversized custom PNGs must be scaled to shell-compatible icon dimensions');
-assert.match(shell, /TryRenameShortcut/,
-  'shortcut renaming must be isolated behind a verified/rollback-safe helper');
+assert.match(shell, /RenderTargetBitmap/,
+  'custom PNGs must be rendered into shell-compatible square icon frames');
+assert.match(shell, /CreateRenamedShortcut/,
+  'shortcut renaming must be isolated behind a create-verify-delete helper');
 
 console.log('windows-shell-customisation-safety: PASS');
