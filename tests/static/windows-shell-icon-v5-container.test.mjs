@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const shell = fs.readFileSync(path.join(root, 'src/OrbitCord.App/WindowsShellIntegration.cs'), 'utf8');
+assert.match(shell, /shell-v5-/);
+assert.match(shell, /ValidateShellIcon/);
+assert.match(shell, /IconBitmapDecoder/);
+assert.doesNotMatch(shell, /\[DllImport\(/);
+console.log('windows-shell-icon-v5-container: PASS');

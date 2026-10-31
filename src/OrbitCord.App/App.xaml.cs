@@ -9,7 +9,6 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
-        WindowsShellIntegration.InitializeProcessIdentity();
         base.OnStartup(e);
 
         DispatcherUnhandledException += OnDispatcherUnhandledException;
@@ -46,7 +45,6 @@ public partial class App : Application
             await splash.PlayExitAsync();
             splash.Close();
             main.RevealAfterSplash();
-            main.QueueShellAppearanceRefresh();
         }
         catch (Exception ex)
         {

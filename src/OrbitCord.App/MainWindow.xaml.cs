@@ -134,21 +134,6 @@ public partial class MainWindow : Window
         UpdateWebViewActivityState();
     }
 
-    public void QueueShellAppearanceRefresh()
-    {
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
-        {
-            try
-            {
-                ApplyShellAppearance();
-            }
-            catch (Exception ex)
-            {
-                _logger.Write($"Deferred Windows shell appearance refresh failed: {ex.Message}");
-            }
-        }));
-    }
-
     public async Task InitializeAsync(Action<string> status)
     {
         status("Starting Microsoft Edge WebView2…");
@@ -775,11 +760,6 @@ public partial class MainWindow : Window
             bitmap.EndInit();
             bitmap.Freeze();
             Icon = bitmap;
-            WindowsShellIntegration.ApplyWindowAppearance(
-                this,
-                _iconCustomizationStore.DisplayAppName,
-                path,
-                _logger);
         }
         catch (Exception ex)
         {

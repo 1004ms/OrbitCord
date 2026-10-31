@@ -127,8 +127,9 @@ internal sealed class InstallerEngine : IDisposable
 
             progress?.Report(new InstallerProgress("Creating Windows shortcuts...", 88));
             // Repair stale OrbitCord-generated icon resources first. On a clean reinstall reset
-            // every OrbitCord shortcut to the embedded EXE icon; on updates only migrate known
-            // shell-v1/v2/v3 resources that could render as a blank document in Explorer.
+            // every OrbitCord shortcut to the embedded EXE icon; on updates migrate known
+            // shell-v1/v2/v3/v4 resources that could render as a blank document in Explorer.
+            // Shortcut names/descriptions are preserved; only the icon path is recovered.
             _windows.RepairShortcutAppearance(installedExe, freshInstall);
             _windows.CreateStartMenuShortcut(installedExe);
             _windows.SetDesktopShortcut(installedExe, options.CreateDesktopShortcut);

@@ -233,11 +233,12 @@ internal sealed class WindowsIntegration
                     var iconLocation = ((string?)shortcut.IconLocation ?? string.Empty).Trim();
                     var legacyOrbitCordIcon = iconLocation.Contains(@"\OrbitCord\Customization\ShellIcons\shell-v1-", StringComparison.OrdinalIgnoreCase)
                         || iconLocation.Contains(@"\OrbitCord\Customization\ShellIcons\shell-v2-", StringComparison.OrdinalIgnoreCase)
-                        || iconLocation.Contains(@"\OrbitCord\Customization\ShellIcons\shell-v3-", StringComparison.OrdinalIgnoreCase);
+                        || iconLocation.Contains(@"\OrbitCord\Customization\ShellIcons\shell-v3-", StringComparison.OrdinalIgnoreCase)
+                        || iconLocation.Contains(@"\OrbitCord\Customization\ShellIcons\shell-v4-", StringComparison.OrdinalIgnoreCase);
                     if (!resetAll && !legacyOrbitCordIcon) continue;
 
                     shortcut.IconLocation = $"{executablePath},0";
-                    shortcut.Description = "OrbitCord";
+                    // Preserve the visible/custom name. Recovery is about a stale icon path only.
                     shortcut.Save();
                     try { SHChangeNotify(ShcneUpdateItem, ShcnfPathW, path, null); } catch { }
                 }
